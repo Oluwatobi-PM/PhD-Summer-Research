@@ -1,0 +1,29 @@
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Local editor and Codex workspace metadata
+.agents/
+.codex/
+*.code-workspace
+
+# Generated case/run outputs
+chap3_python/cases/**/work/
+chap3_python/cases/_restart_smoke/
+
+# Simulator/output artifacts that should not be versioned
+*.sr3
+*.out
+*.log
+*.tmp
+
+# OS metadata
+.DS_Store
+Thumbs.db

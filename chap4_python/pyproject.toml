@@ -1,0 +1,15 @@
+[project]
+name = "chap4-opt"
+version = "0.1.0"
+description = "Python port of the Chapter 4 MATLAB well-location optimization workflow."
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "matplotlib",
+]
+
+[project.scripts]
+chap4-opt = "chap4_opt.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]

@@ -1,0 +1,15 @@
+[project]
+name = "chap3-ga"
+version = "0.1.0"
+description = "Python port of the Chapter 3 MATLAB GA/CMG optimization workflow."
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "matplotlib",
+]
+
+[project.scripts]
+chap3-ga = "chap3_ga.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
