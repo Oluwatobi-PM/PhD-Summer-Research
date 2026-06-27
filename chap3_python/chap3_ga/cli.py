@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import time
 from pathlib import Path
 
 from .config import load_baseinfo, setup_report
@@ -11,6 +12,7 @@ from .ga import GAData, run_ga
 from .initial_solutions import initial_chromosomes_from_file, initial_chromosomes_from_setup
 from .objective import ObjectiveEvaluator, prepare_work_folders
 from .restart import run_ga_restart
+from .run_case import write_optimizer_job_info
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,22 +42,36 @@ def main(argv: list[str] | None = None) -> int:
     cfg = config_from_setup(args.setup)
     if args.work_dir is not None:
         cfg.work_dir = Path(args.work_dir).resolve()
+        setattr(module, "WORK_DIR", str(cfg.work_dir))
     if args.design_var is not None:
         cfg.design_var = args.design_var
+        setattr(module, "DESIGN_VAR", cfg.design_var)
         cfg.loaded_data_file = None
         cfg.locidx, cfg.well_type = load_baseinfo(cfg)
     if args.maxgen is not None:
         cfg.maxgen = args.maxgen
+        setattr(module, "MAXGEN", cfg.maxgen)
     if args.population_size is not None:
         cfg.population_size = args.population_size
+        setattr(module, "POPULATION_SIZE", cfg.population_size)
+        setattr(module, "INITIALIZATION_SIZE", cfg.population_size)
     if args.num_parallel is not None:
         cfg.num_parallel = args.num_parallel
+        setattr(module, "NUM_PARALLEL", cfg.num_parallel)
     if args.check_setup:
         print(setup_report(cfg))
         return 0
     if args.dry_run:
         cfg.num_parallel = min(cfg.num_parallel, cfg.population_size)
+        setattr(module, "DRY_RUN", True)
+        setattr(module, "NUM_PARALLEL", cfg.num_parallel)
     prepare_work_folders(cfg)
+    if args.restart_from is not None:
+        setattr(module, "RESTART_FROM", args.restart_from)
+    if args.extra_generations is not None:
+        setattr(module, "EXTRA_GENERATIONS", args.extra_generations)
+    run_id = time.strftime("%Y%m%d_%H%M%S")
+    write_optimizer_job_info(cfg.work_dir, run_id, Path(args.setup).resolve(), module, cfg)
     objective = ObjectiveEvaluator(cfg, dry_run=args.dry_run)
     initial_chromosomes = (
         initial_chromosomes_from_file(args.initial_chromosomes, cfg)

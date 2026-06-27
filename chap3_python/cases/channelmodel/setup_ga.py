@@ -47,6 +47,7 @@ DESIGN_VAR = 1
 # GA parameters
 # ---------------------------------------------------------------------------
 GA_OPTIONS = {
+    "SEED": 2001,
     "MAXGEN": 80,
     "POPULATION_SIZE": 50,
     "CROSSOVER_PROBABILITY": 0.9,
@@ -60,6 +61,7 @@ GA_OPTIONS = {
 # ILHS parameters
 # ---------------------------------------------------------------------------
 ILHS_OPTIONS = {
+    "SEED": 3001,
     "MAX_ITERATIONS": 80,
     "NUMBER_OF_SAMPLES": 50,
     "ENTROPY": 0.9,
@@ -70,11 +72,12 @@ ILHS_OPTIONS = {
 # Run controls
 # ---------------------------------------------------------------------------
 RUN_OPTIONS = {
+    "INITIALIZATION": "lhs",
+    "INITIALIZATION_SEED": 1000,
     "NUM_PARALLEL": 3,
     "SIMULATION_THREADS": 1,
     "DRY_RUN": False,
     "CHECK_SETUP_ONLY": False,
-    "SEED": 1000,
     "CLEAN_WORK_FOLDERS_ON_START": True,
     "CLEAN_HISTORY_ON_START": True,
     "STREAM_SIMULATOR_OUTPUT": True,

@@ -6,8 +6,11 @@ import os
 import time
 from pathlib import Path
 
+import numpy as np
+
 from chap3_ga.case_setup import load_setup_module
 from chap3_ga.config import setup_report
+from chap3_ga.lhs_initialization import lhs_population
 from chap3_ga.objective import ObjectiveEvaluator, clean_generated_work_folders, prepare_work_folders
 from chap3_ga.run_case import update_baseinfo1_locidx, write_optimizer_job_info
 
@@ -37,7 +40,7 @@ def run_from_setup(setup_file: str | Path) -> None:
     prepare_work_folders(cfg)
 
     run_id = time.strftime("%Y%m%d_%H%M%S")
-    write_optimizer_job_info(cfg.work_dir, run_id, setup_file)
+    write_optimizer_job_info(cfg.work_dir, run_id, setup_file, module, cfg)
     print(
         f"ILHS optimization job started: run_id={run_id}, python_pid={os.getpid()}, "
         f"case={cfg.name}, setup={setup_file}",
@@ -56,12 +59,28 @@ def run_from_setup(setup_file: str | Path) -> None:
             60.0,
         ),
     )
+    initial_particles = None
+    initial_order = None
+    initialization = str(getattr(module, "INITIALIZATION", "")).strip().lower()
+    if initialization == "lhs":
+        init_seed = int(getattr(module, "INITIALIZATION_SEED", getattr(module, "SEED", 1000)))
+        init_rng = np.random.default_rng(init_seed)
+        initial_particles, initial_order = lhs_population(
+            cfg.population_size,
+            normalized_dimension(cfg),
+            init_rng,
+        )
+    elif initialization:
+        raise ValueError(f"Unsupported INITIALIZATION={initialization!r}. Expected 'lhs'.")
+
     ilhs = ILHSData(
         cfg,
         objective,
         max_iterations=cfg.maxgen,
         number_of_samples=cfg.population_size,
         entropy=float(getattr(module, "ENTROPY", 0.9)),
+        initial_particles=initial_particles,
+        initial_order=initial_order,
     )
     run_ilhs(ilhs, seed=int(getattr(module, "SEED", 1000)))
 

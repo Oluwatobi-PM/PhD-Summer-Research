@@ -10,6 +10,7 @@ import numpy as np
 
 from .config import CaseConfig
 from .encoding import decode_locations, encode_locations
+from .lhs_initialization import lhs_initial_chromosomes
 
 
 def initial_chromosomes_from_setup(module: ModuleType, cfg: CaseConfig) -> np.ndarray | None:
@@ -17,10 +18,21 @@ def initial_chromosomes_from_setup(module: ModuleType, cfg: CaseConfig) -> np.nd
 
     raw_chromosomes = getattr(module, "INITIAL_CHROMOSOMES", None)
     structured_solutions = getattr(module, "INITIAL_SOLUTIONS", None)
-    if is_empty_seed_value(raw_chromosomes) and is_empty_seed_value(structured_solutions):
+    initialization = str(getattr(module, "INITIALIZATION", "")).strip().lower()
+    if (
+        initialization != "lhs"
+        and is_empty_seed_value(raw_chromosomes)
+        and is_empty_seed_value(structured_solutions)
+    ):
         return None
 
     chromosomes: list[np.ndarray] = []
+    if initialization == "lhs":
+        seed = int(getattr(module, "INITIALIZATION_SEED", getattr(module, "SEED", 1000)))
+        count = int(getattr(module, "INITIALIZATION_SIZE", cfg.population_size))
+        chromosomes.extend(lhs_initial_chromosomes(cfg, count, seed))
+    elif initialization:
+        raise ValueError(f"Unsupported INITIALIZATION={initialization!r}. Expected 'lhs'.")
     if not is_empty_seed_value(raw_chromosomes):
         chromosomes.extend(normalize_raw_chromosomes(raw_chromosomes, cfg))
     if not is_empty_seed_value(structured_solutions):
