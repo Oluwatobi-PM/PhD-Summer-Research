@@ -1,0 +1,3 @@
+run_id=20260624_180456
+python_pid=47564
+setup=C:\Users\oqr7631\Documents\PhD summer research\chap3_python\cases\Brugge__o\setup_ga.py

@@ -1,0 +1,3 @@
+run_id=20260623_234554
+python_pid=14704
+setup=c:\Users\oqr7631\Desktop\chap3_python\cases\Brugge_xto\setup_ga.py

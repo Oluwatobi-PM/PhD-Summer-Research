@@ -1,0 +1,3 @@
+run_id=20260625_203948
+python_pid=2144
+setup=C:\Users\oqr7631\Documents\PhD summer research\chap3_python\cases\Brugge_xt_o_ilhs\setup_ilhs.py
