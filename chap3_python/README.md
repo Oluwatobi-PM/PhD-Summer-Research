@@ -17,34 +17,46 @@ The MATLAB control code has been converted into a Python package. The CMG simula
 
 ## Preferred Structure
 
-The preferred workflow is now case-folder based:
+The preferred workflow is now case-folder based. Each optimization problem
+should have one setup file, one reusable simulator template, and one working
+directory for numbered parallel runs:
 
 ```text
 chap3_python/
   cases/
-    Brugge/
-      setup_ga.py
+    Brugge_CaseA/
+      setup.py
       template/
       work/
-    Brugge_CaseA_xt_o/
-      setup_ga.py
     channelmodel/
-      setup_ga.py
+      setup.py
+      template/
+      work/
   chap3_ga/
     reusable optimizer/objective/writer code
+  chap3_ilhs/
+    reusable ILHS optimizer code
 ```
 
-Edit the scalar values in a case's `setup_ga.py`, similar to MATLAB
-`setupGA.m`. A single simulator template folder can live in `template/`;
-generated run folders live in `work/1`, `work/2`, ... up to `NUM_PARALLEL`.
-The generic code in `chap3_ga/` should not need case-specific parameter edits.
+Edit the scalar values in a case's setup file, similar to MATLAB `setupGA.m`.
+Set `OPTIMIZER = "ga"` or `OPTIMIZER = "ilhs"` in that file. Shared case and
+model settings stay as top-level scalars; optimizer/testing switches can live
+in `GA_OPTIONS`, `ILHS_OPTIONS`, `RUN_OPTIONS`, and `OBJECTIVE_OPTIONS`
+dictionaries. The selected dictionary is overlaid onto the setup at load time,
+so older flat variables such as `MAXGEN`, `DRY_RUN`, and `NUM_PARALLEL` still
+work.
+
+`template/` is copied to `work/1`, `work/2`, ... up to `NUM_PARALLEL`. The
+generic code in `chap3_ga/` and `chap3_ilhs/` should not need case-specific
+parameter edits.
 
 ## Run
 
 From this folder:
 
 ```powershell
-python -m chap3_ga.cli --setup ".\cases\Brugge_CaseA_xt_o\setup_ga.py"
+python -m chap3_ga.opt_cli --setup ".\cases\channelmodel\setup.py" --check-setup
+python -m chap3_ga.opt_cli --setup ".\cases\channelmodel\setup.py"
 ```
 
 ## Seed Initial Chromosomes

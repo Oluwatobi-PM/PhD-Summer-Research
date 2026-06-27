@@ -1,4 +1,4 @@
-"""Plot GA optimization values from the Python checkpoint file."""
+"""Plot optimizer population values and best-so-far convergence."""
 
 from pathlib import Path
 
@@ -29,6 +29,7 @@ def main() -> None:
     # -GAobj, so we do the same here.
     with np.load(TEMPDATA_FILE) as data:
         gaobj = np.asarray(data["GAobj"], dtype=float)
+        best_so_far_npv = np.asarray(data["GAobjb"], dtype=float) if "GAobjb" in data else None
     pop_npv = -gaobj
     if HIDE_FAILED_VALUES:
         pop_npv = np.where(np.isclose(gaobj, FAILED_OBJECTIVE_VALUE), np.nan, pop_npv)
@@ -42,13 +43,28 @@ def main() -> None:
     x = np.repeat(generations, pop_npv.shape[1])
     y = pop_npv.reshape(-1)
 
-    plt.figure()
-    plt.plot(x, y, "o")
-    plt.xlabel("Generation")
-    plt.ylabel("NPV x 10^9 USD")
+    if best_so_far_npv is None:
+        best_new_npv = np.nanmax(pop_npv, axis=1)
+        best_so_far_npv = np.maximum.accumulate(best_new_npv)
+    else:
+        best_so_far_npv = best_so_far_npv.reshape(-1)[: pop_npv.shape[0]]
+
+    fig, (ax_pop, ax_best) = plt.subplots(2, 1, figsize=(9, 7), sharex=True)
+
+    ax_pop.plot(x, y, "o", markersize=4, alpha=0.7)
+    ax_pop.set_ylabel("Population NPV x 10^9 USD")
     if Y_LIMITS is not None:
-        plt.ylim(Y_LIMITS)
-    plt.grid(True, alpha=0.3)
+        ax_pop.set_ylim(Y_LIMITS)
+    ax_pop.grid(True, alpha=0.3)
+
+    ax_best.plot(generations, best_so_far_npv, "-o", linewidth=2, markersize=4)
+    ax_best.set_xlabel("Iteration")
+    ax_best.set_ylabel("Best-so-far NPV x 10^9 USD")
+    if Y_LIMITS is not None:
+        ax_best.set_ylim(Y_LIMITS)
+    ax_best.grid(True, alpha=0.3)
+    fig.tight_layout()
+
     finite_y = y[np.isfinite(y)]
     print(f"Plotted {finite_y.size} valid point(s).")
     if finite_y.size:
@@ -56,6 +72,8 @@ def main() -> None:
         if Y_LIMITS is not None:
             hidden = np.sum((finite_y < Y_LIMITS[0]) | (finite_y > Y_LIMITS[1]))
             print(f"Point(s) outside y limits {Y_LIMITS}: {hidden}")
+    if best_so_far_npv.size:
+        print(f"Final best-so-far NPV: {best_so_far_npv[-1]:.6g}")
     plt.show()
 
 

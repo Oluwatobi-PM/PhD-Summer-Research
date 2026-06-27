@@ -23,7 +23,36 @@ def load_setup_module(path: str | Path) -> ModuleType:
         raise RuntimeError(f"Could not load setup file: {setup_path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    apply_setup_option_groups(module)
     return module
+
+
+def apply_setup_option_groups(module: ModuleType) -> None:
+    """Overlay optional setup dictionaries onto module-level settings.
+
+    This lets a single case setup keep shared case/model settings at the top
+    and optimizer-specific/testing switches in small dictionaries, while the
+    older flat `setup_ga.py`/`setup_ilhs.py` files continue to work unchanged.
+    """
+
+    optimizer = str(getattr(module, "OPTIMIZER", "ga")).lower()
+    for group_name in ("RUN_OPTIONS", "OBJECTIVE_OPTIONS"):
+        apply_option_group(module, group_name)
+    if optimizer == "ga":
+        apply_option_group(module, "GA_OPTIONS")
+    elif optimizer == "ilhs":
+        apply_option_group(module, "ILHS_OPTIONS")
+    apply_option_group(module, "OPTIMIZER_OPTIONS")
+
+
+def apply_option_group(module: ModuleType, group_name: str) -> None:
+    options = getattr(module, group_name, None)
+    if options is None:
+        return
+    if not isinstance(options, dict):
+        raise TypeError(f"{group_name} must be a dict when provided.")
+    for key, value in options.items():
+        setattr(module, str(key), value)
 
 
 def config_from_setup(path: str | Path) -> CaseConfig:

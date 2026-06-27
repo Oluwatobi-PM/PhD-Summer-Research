@@ -33,8 +33,9 @@ class NPVOptions:
 class CaseConfig:
     """All fixed inputs for one optimization case.
 
-    `source_dir` points to the original MATLAB/CMG folder. `work_dir` is where
-    Python writes generated include files and launches numbered simulations.
+    `source_dir` points to the permanent case input library. It can also be
+    used as the run-folder template. `work_dir` is where Python writes
+    generated numbered simulations and optimizer history.
     """
 
     name: CaseName
@@ -174,14 +175,15 @@ def validate_setup(cfg: CaseConfig) -> list[str]:
         warnings.append("Brugge design_var 1/2 requires locidx from baseinfo.mat")
     if cfg.design_var == 3 and cfg.locidx is None:
         warnings.append("design_var 3 requires locidx from baseinfo1.mat/baseinfo.mat")
-    if cfg.design_var in (1, 2) and cfg.locidx is not None and cfg.locidx.shape[0] < cfg.num_locations:
+    if (
+        cfg.design_var in (1, 2)
+        and cfg.name != "channelmodel"
+        and cfg.locidx is not None
+        and cfg.locidx.shape[0] < cfg.num_locations
+    ):
         warnings.append("locidx has fewer rows than num_locations")
-    for idx in range(1, cfg.num_parallel + 1):
-        folder = cfg.source_dir / str(idx)
-        work_folder = cfg.work_dir / str(idx)
-        template_available = cfg.template_dir is not None and cfg.template_dir.exists()
-        if not folder.exists() and not work_folder.exists() and not template_available:
-            warnings.append(f"missing simulator folder: {folder}")
+    if cfg.template_dir is None or not cfg.template_dir.exists():
+        warnings.append("template_dir is missing")
     return warnings
 
 

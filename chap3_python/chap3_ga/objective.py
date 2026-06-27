@@ -432,19 +432,19 @@ def terminate_process_tree(process: subprocess.Popen) -> None:
 
 def prepare_work_folders(cfg: CaseConfig) -> None:
     """Ensure numbered simulator folders exist in the Python work directory."""
+
+    if cfg.template_dir is None or not cfg.template_dir.exists():
+        raise FileNotFoundError(
+            "TEMPLATE_DIR must point to a reusable simulator template folder. "
+            f"Current value: {cfg.template_dir}"
+        )
+
     cfg.work_dir.mkdir(parents=True, exist_ok=True)
     for i in range(1, cfg.num_parallel + 1):
         dst = cfg.work_dir / str(i)
         if dst.exists():
             continue
-        if cfg.template_dir is not None and cfg.template_dir.exists():
-            shutil.copytree(cfg.template_dir, dst)
-            continue
-        src = cfg.source_dir / str(i)
-        if src.exists():
-            shutil.copytree(src, dst)
-        else:
-            dst.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(cfg.template_dir, dst)
 
 
 def clean_generated_work_folders(cfg: CaseConfig, clean_history: bool = True) -> None:

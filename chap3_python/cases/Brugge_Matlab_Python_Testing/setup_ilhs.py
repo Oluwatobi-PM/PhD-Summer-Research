@@ -11,9 +11,9 @@ import sys
 # Case paths
 # ---------------------------------------------------------------------------
 CASE_NAME = "Brugge_CaseA"
-SOURCE_DIR = "./work"
+SOURCE_DIR = "./source"
 WORK_DIR = "./work"
-TEMPLATE_DIR = "./template"
+TEMPLATE_DIR = SOURCE_DIR
 
 
 # ---------------------------------------------------------------------------

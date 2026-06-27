@@ -10,6 +10,7 @@ dependencies = [
 
 [project.scripts]
 chap3-ga = "chap3_ga.cli:main"
+chap3-opt = "chap3_ga.opt_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

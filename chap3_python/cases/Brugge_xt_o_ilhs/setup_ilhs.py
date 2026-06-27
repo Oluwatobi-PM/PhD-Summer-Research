@@ -11,9 +11,9 @@ import sys
 # Case paths
 # ---------------------------------------------------------------------------
 CASE_NAME = "Brugge_CaseA"
-SOURCE_DIR = "./work"
+SOURCE_DIR = "./source"
 WORK_DIR = "./work"
-TEMPLATE_DIR = "./template"
+TEMPLATE_DIR = SOURCE_DIR
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +61,7 @@ RESULTS_TIMEOUT_SECONDS = 60
 SIMULATION_INTERRUPT_TIMEOUT_SECONDS = 60
 
 # After a type/location run, update the order-only input table
-# `work/baseinfo1_locidx.csv`. This is kept on for both real and dry runs.
+# `source/baseinfo1_locidx.csv`. This is kept on for both real and dry runs.
 UPDATE_BASEINFO1_AFTER_RUN = True
 ALLOW_DRY_RUN_BASEINFO1_UPDATE = True
 

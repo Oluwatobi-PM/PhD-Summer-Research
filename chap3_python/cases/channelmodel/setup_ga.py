@@ -1,14 +1,28 @@
 """Chapter 3 channelmodel setup.
 
-Edit these scalars before launching a Python run.
+This file follows the general case pattern:
+
+- `SOURCE_DIR` contains reusable case data and model libraries.
+- `SOURCE_DIR` is copied to `WORK_DIR/1`, `WORK_DIR/2`, ... for parallel runs.
+- `OPTIMIZER` selects which optimizer engine runs this case.
 """
+
+from pathlib import Path
+import sys
+
+
+# ---------------------------------------------------------------------------
+# Case and optimizer
+# ---------------------------------------------------------------------------
+CASE_NAME = "channelmodel"
+OPTIMIZER = "ga"  # "ga" or "ilhs"
 
 
 # ---------------------------------------------------------------------------
 # Case paths
 # ---------------------------------------------------------------------------
-CASE_NAME = "channelmodel"
-SOURCE_DIR = r"C:\Users\oqr7631\Documents\MATLAB\chap3\channelmodel"
+SOURCE_DIR = "./source"
+TEMPLATE_DIR = SOURCE_DIR
 WORK_DIR = "./work"
 
 
@@ -32,13 +46,44 @@ DESIGN_VAR = 1
 # ---------------------------------------------------------------------------
 # GA parameters
 # ---------------------------------------------------------------------------
-MAXGEN = 80
-POPULATION_SIZE = 50
-CROSSOVER_PROBABILITY = 0.9
-MUTATION_PROBABILITY = 0.01
-ORDER_MUTATION_PROBABILITY = 0.03
-EPSR = 1.0e-8
-NUM_PARALLEL = 3
+GA_OPTIONS = {
+    "MAXGEN": 80,
+    "POPULATION_SIZE": 50,
+    "CROSSOVER_PROBABILITY": 0.9,
+    "MUTATION_PROBABILITY": 0.01,
+    "ORDER_MUTATION_PROBABILITY": 0.03,
+    "EPSR": 1.0e-8,
+}
+
+
+# ---------------------------------------------------------------------------
+# ILHS parameters
+# ---------------------------------------------------------------------------
+ILHS_OPTIONS = {
+    "MAX_ITERATIONS": 80,
+    "NUMBER_OF_SAMPLES": 50,
+    "ENTROPY": 0.9,
+}
+
+
+# ---------------------------------------------------------------------------
+# Run controls
+# ---------------------------------------------------------------------------
+RUN_OPTIONS = {
+    "NUM_PARALLEL": 3,
+    "SIMULATION_THREADS": 1,
+    "DRY_RUN": False,
+    "CHECK_SETUP_ONLY": False,
+    "SEED": 1000,
+    "CLEAN_WORK_FOLDERS_ON_START": True,
+    "CLEAN_HISTORY_ON_START": True,
+    "STREAM_SIMULATOR_OUTPUT": True,
+    "PRINT_BATCH_TIMING": True,
+    "RESULTS_TIMEOUT_SECONDS": 60,
+    "SIMULATION_INTERRUPT_TIMEOUT_SECONDS": 60,
+    "UPDATE_BASEINFO1_AFTER_RUN": False,
+    "ALLOW_DRY_RUN_BASEINFO1_UPDATE": False,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -51,3 +96,12 @@ DISCOUNT_FACTOR = 0.1
 CDRILL_V = 8.0e6
 CDRILL_H = 1.6e7
 OBJECTIVE_SCALING = 1.0e9
+
+
+if __name__ == "__main__":
+    project_root = Path(__file__).resolve().parents[2]
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+    from chap3_ga.optimizer import run_from_setup
+
+    run_from_setup(__file__)

@@ -96,7 +96,7 @@ def update_baseinfo1_locidx(ga: GAData) -> None:
         inject = selected_type(cfg, ga.xmin, well_idx) or is_forced_injector(cfg, int(loc))
         updated[row_idx, 3] = 1 if inject else 0
 
-    out = Path(cfg.work_dir) / "baseinfo1_locidx.csv"
+    out = Path(cfg.source_dir) / "baseinfo1_locidx.csv"
     np.savetxt(out, updated, delimiter=",", fmt="%d")
     cfg.loaded_data_file = out
     print(f"Updated {out} from the best optimized type/location chromosome.")
