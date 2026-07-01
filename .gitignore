@@ -16,6 +16,7 @@ env/
 
 # Generated simulator run folders
 chap3_python/cases/**/work/[0-9]*/
+chap3_python/cases/**/work/python_tempdata/
 chap3_python/cases/_restart_smoke/
 
 # Simulator/output artifacts that should not be versioned
