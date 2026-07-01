@@ -10,9 +10,9 @@ from .config import load_baseinfo, setup_report
 from .case_setup import config_from_setup, load_setup_module
 from .ga import GAData, run_ga
 from .initial_solutions import initial_chromosomes_from_file, initial_chromosomes_from_setup
-from .objective import ObjectiveEvaluator, prepare_work_folders
+from .objective import ObjectiveEvaluator, clean_generated_work_folders, prepare_work_folders
 from .restart import run_ga_restart
-from .run_case import write_optimizer_job_info
+from .run_case import update_baseinfo1_locidx, write_optimizer_job_info
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -65,6 +65,11 @@ def main(argv: list[str] | None = None) -> int:
         cfg.num_parallel = min(cfg.num_parallel, cfg.population_size)
         setattr(module, "DRY_RUN", True)
         setattr(module, "NUM_PARALLEL", cfg.num_parallel)
+    if args.restart_from is None and bool(getattr(module, "CLEAN_WORK_FOLDERS_ON_START", True)):
+        clean_generated_work_folders(
+            cfg,
+            clean_history=bool(getattr(module, "CLEAN_HISTORY_ON_START", True)),
+        )
     prepare_work_folders(cfg)
     if args.restart_from is not None:
         setattr(module, "RESTART_FROM", args.restart_from)
@@ -85,6 +90,11 @@ def main(argv: list[str] | None = None) -> int:
         run_ga_restart(ga, args.restart_from, args.extra_generations, seed=args.seed)
     else:
         run_ga(ga, seed=args.seed)
+    allow_dry_update = bool(getattr(module, "ALLOW_DRY_RUN_BASEINFO1_UPDATE", False))
+    if bool(getattr(module, "UPDATE_BASEINFO1_AFTER_RUN", True)) and (not args.dry_run or allow_dry_update):
+        update_baseinfo1_locidx(ga)
+    elif args.dry_run and not allow_dry_update:
+        print("Skipping baseinfo1_locidx.csv update because this was a dry run.", flush=True)
     return 0
 
 

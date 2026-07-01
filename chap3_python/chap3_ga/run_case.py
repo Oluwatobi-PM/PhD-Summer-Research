@@ -15,7 +15,7 @@ from .encoding import decode_locations
 from .ga import GAData, run_ga
 from .initial_solutions import initial_chromosomes_from_setup
 from .writers import is_forced_injector, selected_type
-from .objective import ObjectiveEvaluator, prepare_work_folders
+from .objective import ObjectiveEvaluator, clean_generated_work_folders, prepare_work_folders
 
 
 def run_from_setup(setup_file: str | Path) -> None:
@@ -24,11 +24,17 @@ def run_from_setup(setup_file: str | Path) -> None:
     setup_file = Path(setup_file).resolve()
     module = load_setup_module(setup_file)
     cfg = config_from_setup(setup_file)
-    prepare_work_folders(cfg)
 
     if bool(getattr(module, "CHECK_SETUP_ONLY", False)):
         print(setup_report(cfg))
         return
+
+    if bool(getattr(module, "CLEAN_WORK_FOLDERS_ON_START", True)):
+        clean_generated_work_folders(
+            cfg,
+            clean_history=bool(getattr(module, "CLEAN_HISTORY_ON_START", True)),
+        )
+    prepare_work_folders(cfg)
 
     run_id = time.strftime("%Y%m%d_%H%M%S")
     write_optimizer_job_info(cfg.work_dir, run_id, setup_file, module, cfg)
@@ -52,8 +58,12 @@ def run_from_setup(setup_file: str | Path) -> None:
     )
     ga = GAData(cfg, objective, initial_chromosomes=initial_chromosomes_from_setup(module, cfg))
     run_ga(ga, seed=int(getattr(module, "SEED", 1000)))
-    if bool(getattr(module, "UPDATE_BASEINFO1_AFTER_RUN", True)):
+    dry_run = bool(getattr(module, "DRY_RUN", False))
+    allow_dry_update = bool(getattr(module, "ALLOW_DRY_RUN_BASEINFO1_UPDATE", False))
+    if bool(getattr(module, "UPDATE_BASEINFO1_AFTER_RUN", True)) and (not dry_run or allow_dry_update):
         update_baseinfo1_locidx(ga)
+    elif dry_run and not allow_dry_update:
+        print("Skipping baseinfo1_locidx.csv update because this was a dry run.", flush=True)
 
 
 def write_optimizer_job_info(
@@ -181,12 +191,24 @@ def update_baseinfo1_locidx(ga: GAData) -> None:
     if cfg.design_var != 2:
         print("Skipping baseinfo1_locidx.csv update because only DESIGN_VAR = 2 prepares that file.")
         return
-    if cfg.locidx is None:
-        raise RuntimeError("Cannot update baseinfo1_locidx.csv because locidx was not loaded.")
     if ga.xmin is None:
         raise RuntimeError("Cannot update baseinfo1_locidx.csv because the GA has no best chromosome.")
 
     locs = decode_locations(ga.xmin, cfg.beforeloc, cfg.num_wells, cfg.bits_per_location)
+    if cfg.name == "channelmodel":
+        types = np.asarray([int(selected_type(cfg, ga.xmin, i)) for i in range(cfg.num_wells)], dtype=int)
+        loc_out = Path(cfg.source_dir) / "baseinfo_locidx.csv"
+        type_out = Path(cfg.source_dir) / "baseinfo_type.csv"
+        np.savetxt(loc_out, np.asarray(locs, dtype=int).reshape(-1, 1), delimiter=",", fmt="%d")
+        np.savetxt(type_out, types.reshape(-1, 1), delimiter=",", fmt="%d")
+        cfg.loaded_data_file = loc_out
+        print(
+            f"Updated {loc_out} and {type_out} from the best optimized channelmodel type/location chromosome."
+        )
+        return
+
+    if cfg.locidx is None:
+        raise RuntimeError("Cannot update baseinfo1_locidx.csv because locidx was not loaded.")
     updated = np.full((cfg.locidx.shape[0], 4), -1, dtype=int)
     updated[:, : min(cfg.locidx.shape[1], 3)] = np.asarray(cfg.locidx[:, :3], dtype=int)
 

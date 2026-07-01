@@ -175,6 +175,8 @@ def validate_setup(cfg: CaseConfig) -> list[str]:
         warnings.append("Brugge design_var 1/2 requires locidx from baseinfo.mat")
     if cfg.design_var == 3 and cfg.locidx is None:
         warnings.append("design_var 3 requires locidx from baseinfo1.mat/baseinfo.mat")
+    if cfg.design_var == 3 and cfg.name == "channelmodel" and cfg.well_type is None:
+        warnings.append("channelmodel design_var 3 requires type from baseinfo.mat/baseinfo_type.csv")
     if (
         cfg.design_var in (1, 2)
         and cfg.name != "channelmodel"

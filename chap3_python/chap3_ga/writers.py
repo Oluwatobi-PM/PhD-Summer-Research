@@ -157,6 +157,9 @@ def write_locations_order_only(cfg: CaseConfig, fileid: int) -> None:
 
     if cfg.locidx is None:
         raise RuntimeError("Order-only location writer needs locidx from baseinfo.mat/baseinfo1.mat.")
+    if cfg.name == "channelmodel":
+        write_channel_order_only_locations(cfg, fileid)
+        return
     path = case_folder(cfg, fileid) / "waterFlooding_well_location.inc"
     names: list[str] = []
     active_rows = [(idx, row) for idx, row in enumerate(cfg.locidx, start=1) if row.shape[0] >= 4 and row[3] >= 0]
@@ -185,6 +188,33 @@ def write_locations_order_only(cfg: CaseConfig, fileid: int) -> None:
                 write_perf_layers(fh, int(row[1]), int(row[2]), 8)
             w(fh, f"SHUTIN {name}")
             w(fh, "")
+
+
+def write_channel_order_only_locations(cfg: CaseConfig, fileid: int) -> None:
+    """Write fixed channelmodel locations and types for order-only optimization."""
+
+    locs, types = channel_order_only_locs_and_types(cfg)
+    path = case_folder(cfg, fileid) / "waterFlooding_well_location.inc"
+    names: list[str] = []
+    with path.open("w", newline="") as fh:
+        w(fh, "GROUP 'ALL-WELLS' ATTACHTO 'FIELD'")
+        for loc, inject in zip(locs, types):
+            name = well_name(int(loc), bool(inject))
+            names.append(name)
+            w(fh, f"WELL  {name} ATTACHTO 'ALL-WELLS'")
+        for loc, inject, name in zip(locs, types, names):
+            well_data = cfg.source_dir / "modelpara" / f"W{int(loc):02d}.dat"
+            if inject:
+                w(fh, f"INJECTOR {name}")
+                w(fh, "INCOMP  WATER")
+                w(fh, f"OPERATE  MAX  BHP   {cfg.injref}")
+            else:
+                w(fh, f"PRODUCER {name}")
+                w(fh, f"OPERATE  MIN  BHP   {cfg.pref}")
+                w(fh, "OPERATE  MAX  STO   100000.0 CONT")
+                w(fh, "MONITOR  MAX  WCUT  0.98     SHUTIN")
+            copy_channel_perf(fh, well_data, name)
+            w(fh, f"SHUTIN {name}")
 
 
 def write_schedule_order_type_location(
@@ -272,6 +302,9 @@ def write_schedule_order_only(cfg: CaseConfig, fileid: int, chromosome: np.ndarr
 
     if cfg.locidx is None:
         raise RuntimeError("Order-only schedule writer needs locidx from baseinfo.mat/baseinfo1.mat.")
+    if cfg.name == "channelmodel":
+        write_channel_order_only_schedule(cfg, fileid, chromosome)
+        return
     active_rows = [(idx, row) for idx, row in enumerate(cfg.locidx, start=1) if row.shape[0] >= 4 and row[3] >= 0]
     names = [
         well_name(int(row[0]), bool(row[3] == 1) or is_forced_injector(cfg, row_idx))
@@ -312,6 +345,62 @@ def write_schedule_order_only(cfg: CaseConfig, fileid: int, chromosome: np.ndarr
             if t >= cfg.sim_time:
                 break
             w(fh, "")
+
+
+def write_channel_order_only_schedule(cfg: CaseConfig, fileid: int, chromosome: np.ndarray) -> None:
+    """Write the channelmodel order-only schedule using fixed locations/types."""
+
+    locs, types = channel_order_only_locs_and_types(cfg)
+    names = [well_name(int(loc), bool(inject)) for loc, inject in zip(locs, types)]
+    path = case_folder(cfg, fileid) / "waterFlooding_sched.inc"
+    with path.open("w", newline="") as fh:
+        nc = 1
+        nw = 1
+        t = 0.1
+        tpc = cfg.sim_time
+        w(fh, f"TIME  {t}")
+        while True:
+            for j, name in enumerate(names):
+                if t >= (chromosome[j] - 1) * cfg.td:
+                    w(fh, "*TARGET    *BHP")
+                    w(fh, name)
+                    w(fh, f"{cfg.injref if bool(types[j]) else cfg.pref:f}")
+                    w(fh, "")
+            inner = 0
+            while t < tpc * nc or t < nw * cfg.td:
+                t = t + 0.1 if inner == 0 else float(np.floor(t + 30 * inner))
+                if t >= cfg.td * nw and nw < cfg.num_wells:
+                    w(fh, f"TIME  {cfg.td * nw}")
+                    nw += 1
+                    break
+                if t >= tpc * nc:
+                    w(fh, f"TIME  {tpc * nc}")
+                    nc += 1
+                    break
+                if t >= cfg.sim_time:
+                    w(fh, f"TIME  {cfg.sim_time}")
+                    break
+                w(fh, f"TIME  {t}")
+                inner = 1
+            if t >= cfg.sim_time:
+                break
+            w(fh, "")
+
+
+def channel_order_only_locs_and_types(cfg: CaseConfig) -> tuple[np.ndarray, np.ndarray]:
+    """Return fixed channelmodel locations and types loaded from baseinfo."""
+
+    if cfg.locidx is None:
+        raise RuntimeError("Channel order-only optimization needs fixed locidx from baseinfo.")
+    if cfg.well_type is None:
+        raise RuntimeError("Channel order-only optimization needs fixed type from baseinfo.")
+    locs = np.asarray(cfg.locidx, dtype=int).reshape(-1)[: cfg.num_wells]
+    types = np.asarray(cfg.well_type, dtype=int).reshape(-1)[: cfg.num_wells]
+    if locs.shape[0] < cfg.num_wells:
+        raise RuntimeError(f"Channel order-only locidx has fewer than {cfg.num_wells} entries.")
+    if types.shape[0] < cfg.num_wells:
+        raise RuntimeError(f"Channel order-only type has fewer than {cfg.num_wells} entries.")
+    return locs, types
 
 
 def w(fh, line: str) -> None:

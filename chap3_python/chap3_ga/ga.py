@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
+import time
 
 import numpy as np
 
@@ -315,13 +316,19 @@ def save_generation_data(ga: GAData, previous_chrom: np.ndarray) -> None:
     }
     target = out / "tempdata.npz"
     tmp = out / "tempdata.tmp.npz"
-    try:
-        np.savez_compressed(tmp, **payload)
-        tmp.replace(target)
-    except PermissionError:
-        if tmp.exists():
-            tmp.unlink()
-        raise PermissionError(
-            f"Could not update {target}. Close any program that has this file open "
-            "and run the optimizer again."
-        )
+    np.savez_compressed(tmp, **payload)
+    for attempt in range(5):
+        try:
+            tmp.replace(target)
+            return
+        except PermissionError:
+            if attempt == 4:
+                fallback = out / f"tempdata_generation_{ga.generation:04d}.npz"
+                tmp.replace(fallback)
+                print(
+                    f"Warning: could not update locked checkpoint {target}. "
+                    f"Saved the latest checkpoint to {fallback} instead.",
+                    flush=True,
+                )
+                return
+            time.sleep(0.5)
