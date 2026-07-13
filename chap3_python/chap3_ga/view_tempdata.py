@@ -10,6 +10,18 @@ import numpy as np
 FAILED_OBJECTIVE_VALUE = 1000.0
 
 
+def optimizer_keys(data: np.lib.npyio.NpzFile) -> tuple[str, str, str] | None:
+    """Return objective/chromosome/best-objective keys for known checkpoints."""
+
+    for prefix in ("GA", "PSO"):
+        obj_key = f"{prefix}obj"
+        gen_key = f"{prefix}gen"
+        best_key = f"{prefix}objb"
+        if obj_key in data and gen_key in data:
+            return obj_key, gen_key, best_key
+    return None
+
+
 def tempdata_path(case_root: str | Path | None = None) -> Path:
     """Return the tempdata path for a case root or python_tempdata folder."""
 
@@ -57,16 +69,18 @@ def print_key_summary(name: str, array: np.ndarray) -> None:
 
 
 def print_objective_summary(data: np.lib.npyio.NpzFile) -> None:
-    if "GAobj" not in data:
+    keys = optimizer_keys(data)
+    if keys is None:
         return
+    obj_key, _, best_key = keys
 
-    gaobj = np.asarray(data["GAobj"], dtype=float)
+    gaobj = np.asarray(data[obj_key], dtype=float)
     if gaobj.ndim == 1:
         gaobj = gaobj.reshape(1, -1)
 
     print("\nObjective summary")
     print("-----------------")
-    print("GAobj is minimized objective. NPV is shown as -GAobj.")
+    print(f"{obj_key} is minimized objective. NPV is shown as -{obj_key}.")
     print("iter  best_new_npv  mean_new_npv  worst_new_npv  failed")
 
     for iteration, row in enumerate(gaobj):
@@ -85,18 +99,20 @@ def print_objective_summary(data: np.lib.npyio.NpzFile) -> None:
             f"{failed.sum():6d}"
         )
 
-    if "GAobjb" in data:
-        best = np.asarray(data["GAobjb"], dtype=float).reshape(-1)
+    if best_key in data:
+        best = np.asarray(data[best_key], dtype=float).reshape(-1)
         print("\nBest-so-far NPV by iteration:")
         print(np.array2string(best, precision=6, suppress_small=False))
 
 
 def print_best_chromosome(data: np.lib.npyio.NpzFile) -> None:
-    if "GAobj" not in data or "GAgen" not in data:
+    keys = optimizer_keys(data)
+    if keys is None:
         return
+    obj_key, gen_key, _ = keys
 
-    gaobj = np.asarray(data["GAobj"], dtype=float)
-    chrom = np.asarray(data["GAgen"])
+    gaobj = np.asarray(data[obj_key], dtype=float)
+    chrom = np.asarray(data[gen_key])
     if gaobj.ndim == 1:
         gaobj = gaobj.reshape(1, -1)
         chrom = chrom.reshape(1, chrom.shape[0], -1)

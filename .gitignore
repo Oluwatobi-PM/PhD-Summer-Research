@@ -14,6 +14,11 @@ env/
 .codex/
 *.code-workspace
 
+# Local legacy/reference optimizer folders
+PSO/
+Rosenbrock/
+Seq_WC_PSO_/
+
 # Generated simulator run folders
 chap3_python/cases/**/work/[0-9]*/
 chap3_python/cases/**/work/python_tempdata/

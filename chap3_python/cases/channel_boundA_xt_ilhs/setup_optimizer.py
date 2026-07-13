@@ -62,7 +62,7 @@ GA_OPTIONS = {
 # ---------------------------------------------------------------------------
 ILHS_OPTIONS = {
     "SEED": 200,
-    "MAX_ITERATIONS": 1,
+    "MAX_ITERATIONS": 50,
     "NUMBER_OF_SAMPLES": 50,
     "ENTROPY": 0.9,
 }
@@ -74,7 +74,7 @@ ILHS_OPTIONS = {
 RUN_OPTIONS = {
     "INITIALIZATION": "lhs",
     "INITIALIZATION_SEED": 1000,
-    "NUM_PARALLEL": 20,
+    "NUM_PARALLEL": 10,
     "SIMULATION_THREADS": 1,
     "DRY_RUN": False,
     "CHECK_SETUP_ONLY": False,

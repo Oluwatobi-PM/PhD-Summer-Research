@@ -42,6 +42,8 @@ def apply_setup_option_groups(module: ModuleType) -> None:
         apply_option_group(module, "GA_OPTIONS")
     elif optimizer == "ilhs":
         apply_option_group(module, "ILHS_OPTIONS")
+    elif optimizer == "pso":
+        apply_option_group(module, "PSO_OPTIONS")
     apply_option_group(module, "OPTIMIZER_OPTIONS")
 
 

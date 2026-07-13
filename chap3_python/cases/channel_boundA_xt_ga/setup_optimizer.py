@@ -48,7 +48,7 @@ DESIGN_VAR = 2
 # ---------------------------------------------------------------------------
 GA_OPTIONS = {
     "SEED": 201,
-    "MAXGEN": 1,
+    "MAXGEN": 50,
     "POPULATION_SIZE": 50,
     "CROSSOVER_PROBABILITY": 0.9,
     "MUTATION_PROBABILITY": 0.01,
@@ -74,7 +74,7 @@ ILHS_OPTIONS = {
 RUN_OPTIONS = {
     "INITIALIZATION": "lhs",
     "INITIALIZATION_SEED": 1000,
-    "NUM_PARALLEL": 20,
+    "NUM_PARALLEL": 10,
     "SIMULATION_THREADS": 1,
     "DRY_RUN": False,
     "CHECK_SETUP_ONLY": False,

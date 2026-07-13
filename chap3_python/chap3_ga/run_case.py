@@ -138,6 +138,19 @@ def job_info_lines(run_id: str, setup_file: Path, module: ModuleType | None, cfg
                 f"entropy = {getattr(module, 'ENTROPY', '')}",
             ]
         )
+    elif optimizer == "pso":
+        lines.extend(
+            [
+                "",
+                "[pso]",
+                f"swarm_size = {cfg.population_size}",
+                f"max_iterations = {cfg.maxgen}",
+                f"omega = {getattr(module, 'OMEGA', '')}",
+                f"phip = {getattr(module, 'PHIP', '')}",
+                f"phig = {getattr(module, 'PHIG', '')}",
+                f"initial_velocity = {getattr(module, 'INITIAL_VELOCITY', 'zero')}",
+            ]
+        )
     else:
         lines.extend(
             [
