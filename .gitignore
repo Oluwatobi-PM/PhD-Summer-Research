@@ -23,6 +23,10 @@ Seq_WC_PSO_/
 chap3_python/cases/**/work/[0-9]*/
 chap3_python/cases/_restart_smoke/
 
+# Optimizer result archives are research outputs and should be versioned
+!chap3_python/cases/**/work/python_tempdata/
+!chap3_python/cases/**/work/python_tempdata/**
+
 # Simulator/output artifacts that should not be versioned
 *.sr3
 *.out
