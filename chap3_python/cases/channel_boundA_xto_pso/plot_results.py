@@ -1,5 +1,7 @@
 """Plot optimizer population values and best-so-far convergence."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -19,22 +21,33 @@ HIDE_FAILED_VALUES = True
 FAILED_OBJECTIVE_VALUE = 1000.0
 
 
+def objective_keys(data: np.lib.npyio.NpzFile) -> tuple[str, str | None]:
+    """Return optimizer-specific objective keys from a tempdata archive."""
+
+    if "PSOobj" in data:
+        return "PSOobj", "PSOobjb" if "PSOobjb" in data else None
+    if "GAobj" in data:
+        return "GAobj", "GAobjb" if "GAobjb" in data else None
+    available = ", ".join(data.files)
+    raise KeyError(f"No supported objective key found. Available keys: {available}")
+
+
 def main() -> None:
     if not TEMPDATA_FILE.exists():
         raise FileNotFoundError(
             f"Could not find {TEMPDATA_FILE}. Run the optimizer first, or check the case folder."
         )
 
-    # GAobj has the minimized objective values. The MATLAB code plots NPV as
-    # -GAobj, so we do the same here.
+    # Optimizer objective arrays store minimized values. Plot NPV as -objective.
     with np.load(TEMPDATA_FILE) as data:
-        gaobj = np.asarray(data["GAobj"], dtype=float)
-        best_so_far_npv = np.asarray(data["GAobjb"], dtype=float) if "GAobjb" in data else None
-    pop_npv = -gaobj
+        obj_key, best_key = objective_keys(data)
+        obj = np.asarray(data[obj_key], dtype=float)
+        best_so_far_npv = np.asarray(data[best_key], dtype=float) if best_key else None
+    pop_npv = -obj
     if HIDE_FAILED_VALUES:
-        pop_npv = np.where(np.isclose(gaobj, FAILED_OBJECTIVE_VALUE), np.nan, pop_npv)
+        pop_npv = np.where(np.isclose(obj, FAILED_OBJECTIVE_VALUE), np.nan, pop_npv)
 
-    # GAobj is saved as generations x population. If only one generation exists,
+    # Objective history is saved as iterations x population. If only one iteration exists,
     # keep it two-dimensional so the plotting code stays consistent.
     if pop_npv.ndim == 1:
         pop_npv = pop_npv.reshape(1, -1)
