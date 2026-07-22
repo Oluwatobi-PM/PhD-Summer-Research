@@ -7,12 +7,11 @@ drilling order `O`, well type `T`, and binary encoded location `x`.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Callable
-import time
 
 import numpy as np
 
+from .checkpoint import atomic_savez, best_population_payload, common_metadata, optimizer_history_dir
 from .config import CaseConfig
 from .encoding import bi2de, de2bi, decode_locations, encode_locations
 from .initial_solutions import apply_initial_chromosomes, describe_initial_chromosomes
@@ -304,8 +303,7 @@ def print_results(ga: GAData) -> None:
 def save_generation_data(ga: GAData, previous_chrom: np.ndarray) -> None:
     """Save MATLAB-like generation history in `python_tempdata/tempdata.npz`."""
 
-    out = Path(ga.config.work_dir) / "python_tempdata"
-    out.mkdir(parents=True, exist_ok=True)
+    out = optimizer_history_dir(ga.config)
     ga.history_chrom.append(previous_chrom.copy())
     ga.history_obj.append(ga.objv.copy())
     payload = {
@@ -314,21 +312,15 @@ def save_generation_data(ga: GAData, previous_chrom: np.ndarray) -> None:
         "GAobj": np.array(ga.history_obj),
         "GAobjb": -np.array(ga.fxmingen),
     }
+    payload.update(
+        common_metadata(
+            "GA",
+            ga.config,
+            ga.generation,
+            best_chromosome=ga.xmin,
+            best_objective=ga.fxmin,
+        )
+    )
+    payload.update(best_population_payload(previous_chrom, ga.objv, prefix="GA"))
     target = out / "tempdata.npz"
-    tmp = out / "tempdata.tmp.npz"
-    np.savez_compressed(tmp, **payload)
-    for attempt in range(5):
-        try:
-            tmp.replace(target)
-            return
-        except PermissionError:
-            if attempt == 4:
-                fallback = out / f"tempdata_generation_{ga.generation:04d}.npz"
-                tmp.replace(fallback)
-                print(
-                    f"Warning: could not update locked checkpoint {target}. "
-                    f"Saved the latest checkpoint to {fallback} instead.",
-                    flush=True,
-                )
-                return
-            time.sleep(0.5)
+    atomic_savez(target, payload, fallback_stem=f"tempdata_generation_{ga.generation:04d}")

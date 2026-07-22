@@ -16,6 +16,7 @@ from .ga import GAData, run_ga
 from .initial_solutions import initial_chromosomes_from_setup
 from .writers import is_forced_injector, selected_type
 from .objective import ObjectiveEvaluator, clean_generated_work_folders, prepare_work_folders
+from .restart import run_ga_restart
 
 
 def run_from_setup(setup_file: str | Path) -> None:
@@ -29,7 +30,7 @@ def run_from_setup(setup_file: str | Path) -> None:
         print(setup_report(cfg))
         return
 
-    if bool(getattr(module, "CLEAN_WORK_FOLDERS_ON_START", True)):
+    if not getattr(module, "RESTART_FROM", None) and bool(getattr(module, "CLEAN_WORK_FOLDERS_ON_START", True)):
         clean_generated_work_folders(
             cfg,
             clean_history=bool(getattr(module, "CLEAN_HISTORY_ON_START", True)),
@@ -57,7 +58,14 @@ def run_from_setup(setup_file: str | Path) -> None:
         ),
     )
     ga = GAData(cfg, objective, initial_chromosomes=initial_chromosomes_from_setup(module, cfg))
-    run_ga(ga, seed=int(getattr(module, "SEED", 1000)))
+    restart_from = getattr(module, "RESTART_FROM", None)
+    if restart_from:
+        extra_generations = getattr(module, "EXTRA_GENERATIONS", None)
+        if extra_generations is None:
+            raise ValueError("RESTART_FROM requires EXTRA_GENERATIONS in the setup file.")
+        run_ga_restart(ga, restart_from, int(extra_generations), seed=int(getattr(module, "SEED", 1000)))
+    else:
+        run_ga(ga, seed=int(getattr(module, "SEED", 1000)))
     dry_run = bool(getattr(module, "DRY_RUN", False))
     allow_dry_update = bool(getattr(module, "ALLOW_DRY_RUN_BASEINFO1_UPDATE", False))
     if bool(getattr(module, "UPDATE_BASEINFO1_AFTER_RUN", True)) and (not dry_run or allow_dry_update):
@@ -149,6 +157,23 @@ def job_info_lines(run_id: str, setup_file: Path, module: ModuleType | None, cfg
                 f"phip = {getattr(module, 'PHIP', '')}",
                 f"phig = {getattr(module, 'PHIG', '')}",
                 f"initial_velocity = {getattr(module, 'INITIAL_VELOCITY', 'zero')}",
+                f"velocity_clamp = {getattr(module, 'VELOCITY_CLAMP', '')}",
+                f"mutation_rate = {getattr(module, 'PSO_MUTATION_RATE', getattr(module, 'MUTATION_RATE', ''))}",
+                f"stall_iterations = {getattr(module, 'STALL_ITERATIONS', '')}",
+                f"reseed_fraction = {getattr(module, 'RESEED_FRACTION', '')}",
+                f"improvement_tolerance = {getattr(module, 'IMPROVEMENT_TOLERANCE', '')}",
+            ]
+        )
+    elif optimizer == "de":
+        lines.extend(
+            [
+                "",
+                "[de]",
+                f"population_size = {cfg.population_size}",
+                f"max_generations = {cfg.maxgen}",
+                f"mutation_factor = {getattr(module, 'DE_MUTATION_FACTOR', getattr(module, 'MUTATION_FACTOR', ''))}",
+                f"crossover_factor = {getattr(module, 'DE_CROSSOVER_FACTOR', getattr(module, 'CROSSOVER_FACTOR', ''))}",
+                f"strategy = {getattr(module, 'DE_STRATEGY', '')}",
             ]
         )
     else:
