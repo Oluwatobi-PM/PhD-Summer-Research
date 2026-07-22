@@ -1,0 +1,243 @@
+**************************************************************************
+**  The University of Tulsa
+**  Petroleum Reservoir Exploitation Projects - TUPREP.
+**  Ranran Lu, Ph.D. Candidate
+**************************************************************************
+**
+**************************************************************************
+** Case 2.dat
+**************************************************************************
+** DESCRIPTION
+**
+** Three Channel Case
+**************************************************************************
+
+**************************************************************************
+** Section 1: IO Control
+**************************************************************************
+**
+TITLE1
+'TUPREP'
+
+TITLE2
+'W-O-14layer'
+
+
+** Unit System
+** FIELD, SI
+INUNIT
+FIELD
+
+
+*WPRN   *WELL   *TIME    ** Frequencia de impressao no arq. saida .OUT
+*WPRN   *GRID   0
+*WPRN   *ITER   *BRIEF
+
+*OUTPRN *WELL   *ALL     ** Informacoes a serem impressas arq.saida .OUT
+*OUTPRN *RES    *ALL
+*OUTPRN *TABLES *NONE
+*OUTPRN *GRID   *NONE
+
+*WSRF   *GRID   1        ** Frequencia de gravacao nos arq. .IRF e .MRF
+*WSRF   *WELL   1
+
+                                             ** Informacoes a serem gravadas nos
+*OUTSRF *GRID *SW *SG *SO *PRES *DATUMPRES   ** arq. .IRF e .MRF
+*OUTSRF *WELL *LAYER *ALL
+
+**
+****************************************************************************
+** Section 2: Reservoir Description
+**************************************************************************-
+**
+**Grid size
+GRID CART 50 50 14
+
+KDIR DOWN
+
+**Grid block size in x-direction
+DI CON 200 
+
+**Grid block size in y-direction
+DJ CON 200
+
+**Grid block size in z-direction
+DK CON 10
+
+**Depth
+DEPTH 1 1 1 4805
+
+**Porosity
+INCLUDE 'poro_base.inc'
+
+**Net-to-gross ratio
+NETGROSS CON 1.0
+
+**Inactive grid blocks
+NULL CON 1.0
+
+**Permeability in x-direction
+INCLUDE 'permx_base.inc'
+
+**Permeability in y-direction
+PERMJ  EQUALSI
+
+**Permeability in z-direction
+PERMK  EQUALSI  * 0.1
+
+**
+** Rock Compressibility
+CPOR 0.00006103
+
+** Rock Compressibility Pressure Reference
+PRPOR 3408.205
+
+**
+**
+****************************************************************************
+** Section 3: Fluid Properties
+****************************************************************************
+**
+MODEL BLACKOIL
+
+** Reservoir Temperature
+TRES 100.000
+
+** PVT Table
+PVT *BG 1
+**    P            Rs           Bo            Bg       VisO   VisG    
+**    (psia)    (SCF/STB)    (RB/STB)      (RB/STB)    (cP)   (cP)    
+     14.70      0.000000     1.05           1.0000     2.20   .0125
+  10014.70      1.00E-10     1.051          1.0000     2.20   .0125
+**
+
+** Oil Density
+DENSITY OIL    56.930
+
+** Water Density
+DENSITY WATER  62.428
+
+** Gas Density
+DENSITY GAS     0.0516
+
+** Oil Compressibility
+CO    4.E-6
+
+** Oil Viscosity Compressibility
+CVO   0.0
+
+** Water FVF
+BWI   1.0042
+
+** Water Compressibility
+CW    3.744E-6
+
+** Water Compressibility Pressure Reference
+REFPW 3400.37
+
+** Water Viscosity
+VWI   0.5
+
+** Water Viscosity Compressibility
+CVW   0.0
+
+**
+****************************************************************************
+** Section 4: Rock-Fluid Properties
+****************************************************************************
+**
+ROCKFLUID
+RPT 1
+
+** Oil-Water Relative Permeability Table
+** Pc = 0
+SWT
+** Sw    Krw     Kro    Pcow
+**(adm) (adm)   (adm)  (psia)
+0.100	0.00000	1.00000	0.000
+0.200	0.01250	0.76563	0.000
+0.250	0.02813	0.66016	0.000
+0.300	0.05000	0.56250	0.000
+0.350	0.07813	0.47266	0.000
+0.400	0.11250	0.39063	0.000
+0.450	0.15313	0.31641	0.000
+0.500	0.20000	0.25000	0.000
+0.550	0.25313	0.19141	0.000
+0.600	0.31250	0.14063	0.000
+0.650	0.37813	0.09766	0.000
+0.700	0.45000	0.06250	0.000
+0.750	0.52813	0.03516	0.000
+0.800	0.61250	0.01563	0.000
+0.900	0.80000	0.00000	0.000
+
+SGT
+** Sg 	Krg 	Krog 	Pcog
+0.000	0.00000	1.00000	0.000
+0.900	0.00001	0.00000	0.000
+
+****************************************************************************
+** Section 5: Initial Condition
+****************************************************************************
+**
+
+INITIAL
+
+VERTICAL DEPTH_AVE WATER_OIL EQUIL
+** DATUM
+DATUMDEPTH 4800.0
+**
+** Reference Depth
+REFDEPTH 4800.0
+
+** Initial Pressure
+REFPRES 3800.00
+
+** Water-Oil Contact Depth
+DWOC 4990.0
+
+** Bubble Pressure
+PB CON 14.70
+**
+****************************************************************************
+** Section 6: Numerical Settings
+****************************************************************************
+**
+NUMERICAL
+**
+
+DTMIN          0.0001        ** Minimum Time step size
+
+DTMAX         30.0           ** Maximum Time step size
+
+MAXSTEPS      1000           ** Maximum Number of Time steps
+
+NCUTS         10             ** Maximum Number of Time step cuts
+
+                             ** Time step size control
+NORM *PRESS   50.00          ** max. change in pressure   at a timestep
+NORM *SATUR    0.05          ** max. change in saturation at a timestep
+
+AIM STAB
+
+****************************************************************************
+** Section 7: Well and Recurrent Data
+****************************************************************************
+**
+
+RUN
+
+
+DATE 2012 01 01
+DTWELL 0.1
+
+INCLUDE waterFlooding_well_location.inc
+
+**------------------------------------------------------------
+
+
+INCLUDE waterFlooding_sched.inc
+
+
+
+STOP
+

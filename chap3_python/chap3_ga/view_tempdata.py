@@ -13,7 +13,7 @@ FAILED_OBJECTIVE_VALUE = 1000.0
 def optimizer_keys(data: np.lib.npyio.NpzFile) -> tuple[str, str, str] | None:
     """Return objective/chromosome/best-objective keys for known checkpoints."""
 
-    for prefix in ("GA", "PSO"):
+    for prefix in ("GA", "PSO", "DE"):
         obj_key = f"{prefix}obj"
         gen_key = f"{prefix}gen"
         best_key = f"{prefix}objb"

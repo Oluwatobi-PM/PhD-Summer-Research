@@ -16,6 +16,7 @@ from chap3_ga.run_case import update_baseinfo1_locidx, write_optimizer_job_info
 
 from .case_setup import config_from_setup
 from .ilhs import ILHSData, normalized_dimension, run_ilhs
+from .restart import run_ilhs_restart
 
 
 def run_from_setup(setup_file: str | Path) -> None:
@@ -32,7 +33,7 @@ def run_from_setup(setup_file: str | Path) -> None:
         print(f"max_iterations: {cfg.maxgen}")
         return
 
-    if bool(getattr(module, "CLEAN_WORK_FOLDERS_ON_START", True)):
+    if not getattr(module, "RESTART_FROM", None) and bool(getattr(module, "CLEAN_WORK_FOLDERS_ON_START", True)):
         clean_generated_work_folders(
             cfg,
             clean_history=bool(getattr(module, "CLEAN_HISTORY_ON_START", True)),
@@ -82,7 +83,14 @@ def run_from_setup(setup_file: str | Path) -> None:
         initial_particles=initial_particles,
         initial_order=initial_order,
     )
-    run_ilhs(ilhs, seed=int(getattr(module, "SEED", 1000)))
+    restart_from = getattr(module, "RESTART_FROM", None)
+    if restart_from:
+        extra_iterations = getattr(module, "EXTRA_ITERATIONS", getattr(module, "EXTRA_GENERATIONS", None))
+        if extra_iterations is None:
+            raise ValueError("RESTART_FROM requires EXTRA_ITERATIONS in the setup file.")
+        run_ilhs_restart(ilhs, restart_from, int(extra_iterations), seed=int(getattr(module, "SEED", 1000)))
+    else:
+        run_ilhs(ilhs, seed=int(getattr(module, "SEED", 1000)))
 
     dry_run = bool(getattr(module, "DRY_RUN", False))
     allow_dry_update = bool(getattr(module, "ALLOW_DRY_RUN_BASEINFO1_UPDATE", False))

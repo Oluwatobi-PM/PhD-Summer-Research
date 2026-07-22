@@ -33,7 +33,12 @@ def run_from_setup(setup_file: str | Path) -> None:
 
         run_pso_from_setup(setup_file)
         return
-    raise ValueError(f"Unsupported OPTIMIZER={selected!r}. Expected 'ga', 'ilhs', or 'pso'.")
+    if selected == "de":
+        from chap3_de.run_case import run_from_setup as run_de_from_setup
+
+        run_de_from_setup(setup_file)
+        return
+    raise ValueError(f"Unsupported OPTIMIZER={selected!r}. Expected 'ga', 'ilhs', 'pso', or 'de'.")
 
 
 def check_setup(setup_file: str | Path) -> None:
@@ -68,4 +73,18 @@ def check_setup(setup_file: str | Path) -> None:
         print(f"swarm_size: {cfg.population_size}")
         print(f"max_iterations: {cfg.maxgen}")
         return
-    raise ValueError(f"Unsupported OPTIMIZER={selected!r}. Expected 'ga', 'ilhs', or 'pso'.")
+    if selected == "de":
+        from chap3_de.case_setup import config_from_setup
+        from chap3_de.de import STRATEGY_NAMES
+        from chap3_ga.lhs_initialization import normalized_dimension
+        from .config import setup_report
+
+        module = load_setup_module(setup_file)
+        cfg = config_from_setup(setup_file)
+        print(setup_report(cfg))
+        print(f"de_dimensions: {normalized_dimension(cfg)}")
+        print(f"population_size: {cfg.population_size}")
+        print(f"max_generations: {cfg.maxgen}")
+        print(f"de_strategy: {STRATEGY_NAMES[int(getattr(module, 'DE_STRATEGY', 7))]}")
+        return
+    raise ValueError(f"Unsupported OPTIMIZER={selected!r}. Expected 'ga', 'ilhs', 'pso', or 'de'.")

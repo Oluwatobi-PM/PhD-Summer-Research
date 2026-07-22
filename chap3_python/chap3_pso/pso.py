@@ -8,11 +8,11 @@ objective pipeline before evaluation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Callable
 
 import numpy as np
 
+from chap3_ga.checkpoint import atomic_savez, best_population_payload, common_metadata, optimizer_history_dir
 from chap3_ga.config import CaseConfig
 from chap3_ga.lhs_initialization import decode_lhs_population, lhs_population, normalized_dimension
 
@@ -31,6 +31,11 @@ class PSOData:
     omega: float = 0.7298
     phip: float = 1.496
     phig: float = 1.496
+    velocity_clamp: float | None = None
+    mutation_rate: float = 0.0
+    stall_iterations: int | None = None
+    reseed_fraction: float = 0.0
+    improvement_tolerance: float = 0.0
     initial_particles: np.ndarray | None = None
     initial_velocity: str = "zero"
     particles: np.ndarray | None = None
@@ -54,20 +59,54 @@ class PSOData:
         self.max_iterations = self.config.maxgen if self.max_iterations is None else self.max_iterations
         self.swarm_size = self.config.population_size if self.swarm_size is None else self.swarm_size
         self.dimension = normalized_dimension(self.config)
+        if self.velocity_clamp is not None and self.velocity_clamp <= 0.0:
+            raise ValueError("velocity_clamp must be positive when provided.")
+        if not 0.0 <= self.mutation_rate <= 1.0:
+            raise ValueError("mutation_rate must be between 0 and 1.")
+        if not 0.0 <= self.reseed_fraction <= 1.0:
+            raise ValueError("reseed_fraction must be between 0 and 1.")
 
 
-def run_pso(pso: PSOData, seed: int = 1000, save_history: bool = True) -> PSOData:
+def run_pso(
+    pso: PSOData,
+    seed: int = 1000,
+    save_history: bool = True,
+    iteration_offset: int = 0,
+    evaluate_initial: bool = True,
+) -> PSOData:
     """Run PSO and return the final state."""
 
     rng = np.random.default_rng(seed)
-    particles = initial_particles(pso, rng)
-    velocities = initial_velocities(pso, rng)
-    pbest_particles = particles.copy()
-    pbest_obj = np.full(int(pso.swarm_size), np.inf, dtype=float)
+    particles = pso.particles.copy() if pso.particles is not None else initial_particles(pso, rng)
+    velocities = pso.velocities.copy() if pso.velocities is not None else initial_velocities(pso, rng)
+    pbest_particles = (
+        pso.personal_best_particles.copy()
+        if pso.personal_best_particles is not None
+        else particles.copy()
+    )
+    pbest_obj = (
+        pso.personal_best_obj.copy()
+        if pso.personal_best_obj is not None
+        else np.full(int(pso.swarm_size), np.inf, dtype=float)
+    )
 
-    evaluate_swarm(pso, particles, velocities, pbest_particles, pbest_obj, iteration=0, save_history=save_history)
+    if evaluate_initial:
+        evaluate_swarm(
+            pso,
+            particles,
+            velocities,
+            pbest_particles,
+            pbest_obj,
+            iteration=iteration_offset,
+            save_history=save_history,
+        )
+    elif pso.best_particle is None:
+        best_idx = int(np.nanargmin(pbest_obj))
+        pso.best_particle = pbest_particles[best_idx].copy()
 
+    stalled = 0
     for iteration in range(1, int(pso.max_iterations) + 1):
+        actual_iteration = iteration_offset + iteration
         rp = rng.uniform(size=particles.shape)
         rg = rng.uniform(size=particles.shape)
         if pso.best_particle is None:
@@ -77,16 +116,27 @@ def run_pso(pso: PSOData, seed: int = 1000, save_history: bool = True) -> PSODat
             + float(pso.phip) * rp * (pbest_particles - particles)
             + float(pso.phig) * rg * (pso.best_particle - particles)
         )
+        if pso.velocity_clamp is not None:
+            velocities = np.clip(velocities, -float(pso.velocity_clamp), float(pso.velocity_clamp))
         particles = np.clip(particles + velocities, 0.0, 1.0)
+        mutate_particles(particles, float(pso.mutation_rate), rng)
+        previous_best = float(pso.fxmin)
         evaluate_swarm(
             pso,
             particles,
             velocities,
             pbest_particles,
             pbest_obj,
-            iteration=iteration,
+            iteration=actual_iteration,
             save_history=save_history,
         )
+        if pso.fxmin < previous_best - float(pso.improvement_tolerance):
+            stalled = 0
+        else:
+            stalled += 1
+        if should_reseed(pso, stalled):
+            reseed_worst_particles(particles, velocities, pbest_particles, pbest_obj, pso, rng)
+            stalled = 0
 
     print_results(pso)
     return pso
@@ -115,6 +165,49 @@ def initial_velocities(pso: PSOData, rng: np.random.Generator) -> np.ndarray:
     if mode == "random":
         return rng.uniform(-1.0, 1.0, size=shape)
     raise ValueError(f"Unsupported INITIAL_VELOCITY={pso.initial_velocity!r}. Expected 'zero' or 'random'.")
+
+
+def mutate_particles(particles: np.ndarray, mutation_rate: float, rng: np.random.Generator) -> None:
+    """Randomly reset normalized particle dimensions in place."""
+
+    if mutation_rate <= 0.0:
+        return
+    mask = rng.random(particles.shape) < mutation_rate
+    if np.any(mask):
+        particles[mask] = rng.uniform(0.0, 1.0, size=int(np.sum(mask)))
+
+
+def should_reseed(pso: PSOData, stalled: int) -> bool:
+    """Return true when optional stall reseeding should run."""
+
+    return (
+        pso.stall_iterations is not None
+        and int(pso.stall_iterations) > 0
+        and stalled >= int(pso.stall_iterations)
+        and float(pso.reseed_fraction) > 0.0
+    )
+
+
+def reseed_worst_particles(
+    particles: np.ndarray,
+    velocities: np.ndarray,
+    pbest_particles: np.ndarray,
+    pbest_obj: np.ndarray,
+    pso: PSOData,
+    rng: np.random.Generator,
+) -> None:
+    """Reseed the worst personal-best particles to recover exploration."""
+
+    count = max(1, int(np.ceil(float(pso.reseed_fraction) * particles.shape[0])))
+    count = min(count, particles.shape[0] - 1) if particles.shape[0] > 1 else 1
+    if count <= 0:
+        return
+    worst = np.argsort(pbest_obj)[-count:]
+    particles[worst] = rng.uniform(0.0, 1.0, size=(count, particles.shape[1]))
+    velocities[worst] = initial_velocities(pso, rng)[worst]
+    pbest_particles[worst] = particles[worst]
+    pbest_obj[worst] = np.inf
+    print(f"PSO reseeded {count} stalled particle(s).", flush=True)
 
 
 def evaluate_swarm(
@@ -172,12 +265,12 @@ def print_results(pso: PSOData) -> None:
 def save_iteration_data(pso: PSOData) -> None:
     """Save PSO history to the case work directory."""
 
-    out = Path(pso.config.work_dir) / "python_tempdata"
-    out.mkdir(parents=True, exist_ok=True)
+    out = optimizer_history_dir(pso.config)
     pso.history_particles.append(pso.particles.copy())
     pso.history_velocity.append(pso.velocities.copy())
     pso.history_chrom.append(pso.chrom.copy())
     pso.history_obj.append(pso.objv.copy())
+    pbest_chrom = decode_lhs_population(pso.config, pso.personal_best_particles)
     data = {
         "method": np.array("pso"),
         "PSOparticles": np.array(pso.history_particles),
@@ -188,11 +281,17 @@ def save_iteration_data(pso: PSOData) -> None:
         "PSOobjb": -np.array(pso.fxmingen),
         "PSOpbest": np.array(pso.personal_best_particles),
         "PSOpbestobj": np.array(pso.personal_best_obj),
+        "PSOpbestChrom": pbest_chrom,
     }
+    data.update(
+        common_metadata(
+            "PSO",
+            pso.config,
+            pso.iteration,
+            best_chromosome=pso.xmin,
+            best_objective=pso.fxmin,
+        )
+    )
+    data.update(best_population_payload(pbest_chrom, pso.personal_best_obj, prefix="PSO"))
     target = out / "tempdata.npz"
-    try:
-        np.savez(target, **data)
-    except OSError as exc:
-        fallback = out / f"tempdata_iteration_{pso.iteration:04d}.npz"
-        np.savez(fallback, **data)
-        print(f"Warning: could not update {target}: {exc}. Saved {fallback} instead.", flush=True)
+    atomic_savez(target, data, fallback_stem=f"tempdata_iteration_{pso.iteration:04d}", compressed=False)

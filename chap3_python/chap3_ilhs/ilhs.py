@@ -8,13 +8,12 @@ chromosome with the existing objective pipeline.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Callable
 import math
-import time
 
 import numpy as np
 
+from chap3_ga.checkpoint import atomic_savez, best_population_payload, common_metadata, optimizer_history_dir
 from chap3_ga.config import CaseConfig
 from chap3_ga.lhs_initialization import (
     decode_lhs_particle,
@@ -41,6 +40,7 @@ class ILHSData:
     particles: np.ndarray | None = None
     initial_particles: np.ndarray | None = None
     initial_order: np.ndarray | None = None
+    initial_bounds: np.ndarray | None = None
     chrom: np.ndarray | None = None
     objv: np.ndarray | None = None
     xmin: np.ndarray | None = None
@@ -62,7 +62,12 @@ class ILHSData:
         self.dimension = normalized_dimension(self.config)
 
 
-def run_ilhs(ilhs: ILHSData, seed: int = 1000, save_history: bool = True) -> ILHSData:
+def run_ilhs(
+    ilhs: ILHSData,
+    seed: int = 1000,
+    save_history: bool = True,
+    iteration_offset: int = 0,
+) -> ILHSData:
     """Run the full ILHS loop and return the final state."""
 
     rng = np.random.default_rng(seed)
@@ -75,16 +80,19 @@ def run_ilhs(ilhs: ILHSData, seed: int = 1000, save_history: bool = True) -> ILH
             if ilhs.initial_order is not None
             else np.zeros_like(particles, dtype=int)
         )
-    old_bounds = np.array(
-        [
-            [i / int(ilhs.number_of_samples) for _ in range(ilhs.dimension)]
-            for i in range(1, int(ilhs.number_of_samples) + 1)
-        ],
-        dtype=float,
-    )
+    if ilhs.initial_bounds is not None:
+        old_bounds = np.asarray(ilhs.initial_bounds, dtype=float).copy()
+    else:
+        old_bounds = np.array(
+            [
+                [i / int(ilhs.number_of_samples) for _ in range(ilhs.dimension)]
+                for i in range(1, int(ilhs.number_of_samples) + 1)
+            ],
+            dtype=float,
+        )
 
     for iteration in range(int(ilhs.max_iterations)):
-        ilhs.iteration = iteration
+        ilhs.iteration = iteration_offset + iteration
         ilhs.particles = particles.copy()
         ilhs.chrom = decode_population(ilhs.config, ilhs.particles, rng)
         ilhs.objv = ilhs.objective(ilhs.chrom)
@@ -312,8 +320,7 @@ def print_results(ilhs: ILHSData) -> None:
 def save_iteration_data(ilhs: ILHSData, order: np.ndarray, old_bounds: np.ndarray) -> None:
     """Save MATLAB-like history in `python_tempdata/tempdata.npz`."""
 
-    out = Path(ilhs.config.work_dir) / "python_tempdata"
-    out.mkdir(parents=True, exist_ok=True)
+    out = optimizer_history_dir(ilhs.config)
     ilhs.history_particles.append(ilhs.particles.copy())
     ilhs.history_order.append(order.copy())
     ilhs.history_bounds.append(old_bounds.copy())
@@ -329,18 +336,15 @@ def save_iteration_data(ilhs: ILHSData, order: np.ndarray, old_bounds: np.ndarra
         "GAobj": np.array(ilhs.history_obj),
         "GAobjb": -np.array(ilhs.fxmingen),
     }
+    payload.update(
+        common_metadata(
+            "ILHS",
+            ilhs.config,
+            ilhs.iteration,
+            best_chromosome=ilhs.xmin,
+            best_objective=ilhs.fxmin,
+        )
+    )
+    payload.update(best_population_payload(ilhs.chrom, ilhs.objv, prefix="ILHS"))
     target = out / "tempdata.npz"
-    tmp = out / "tempdata.tmp.npz"
-    np.savez_compressed(tmp, **payload)
-    for attempt in range(5):
-        try:
-            tmp.replace(target)
-            return
-        except PermissionError:
-            if attempt == 4:
-                print(
-                    f"Warning: could not update locked checkpoint {target}. "
-                    f"The latest checkpoint remains in {tmp}."
-                )
-                return
-            time.sleep(0.5)
+    atomic_savez(target, payload, fallback_stem=f"tempdata_iteration_{ilhs.iteration:04d}")
