@@ -45,8 +45,8 @@ DE_OPTIONS = {
     "DE_POPULATION_SIZE": 50,
     "DE_MUTATION_FACTOR": 0.5,
     "DE_CROSSOVER_FACTOR": 0.7,
-    # UOF strategy 7 = DE/rand/1/bin, a conservative first DE baseline.
-    "DE_STRATEGY": 7,
+    # de strategy.
+    "DE_STRATEGY": 6,
 }
 
 
