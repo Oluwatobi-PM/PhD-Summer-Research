@@ -176,6 +176,40 @@ def job_info_lines(run_id: str, setup_file: Path, module: ModuleType | None, cfg
                 f"strategy = {getattr(module, 'DE_STRATEGY', '')}",
             ]
         )
+    elif optimizer == "mads":
+        lines.extend(
+            [
+                "",
+                "[mads]",
+                f"max_simulations = {getattr(module, 'MAX_SIMULATIONS', getattr(module, 'MAX_BB_EVAL', ''))}",
+                f"initial_mesh_size = {getattr(module, 'INITIAL_MESH_SIZE', '')}",
+                f"initial_poll_size = {getattr(module, 'INITIAL_POLL_SIZE', '')}",
+                f"min_mesh_size = {getattr(module, 'MIN_MESH_SIZE', '')}",
+                f"min_poll_size = {getattr(module, 'MIN_POLL_SIZE', '')}",
+                f"direction_type = {getattr(module, 'DIRECTION_TYPE', '')}",
+                f"bb_max_block_size = {getattr(module, 'BB_MAX_BLOCK_SIZE', '')}",
+            ]
+        )
+    elif optimizer in ("hybrid_mads", "pso_mads", "global_mads"):
+        lines.extend(
+            [
+                "",
+                "[hybrid_mads]",
+                f"global_optimizer = {getattr(module, 'GLOBAL_OPTIMIZER', 'pso')}",
+                f"max_simulations = {getattr(module, 'MAX_SIMULATIONS', getattr(module, 'MAXGEN', ''))}",
+                f"swarm_size = {cfg.population_size}",
+                f"pso_handoff_rule = {getattr(module, 'PSO_HANDOFF_RULE', 'no_improvement')}",
+                f"pso_stall_iterations = {getattr(module, 'PSO_STALL_ITERATIONS', 1)}",
+                f"global_iterations_per_cycle = {getattr(module, 'GLOBAL_ITERATIONS_PER_CYCLE', '')}",
+                f"local_mads_budget = {getattr(module, 'LOCAL_MADS_BUDGET', '')}",
+                f"mads_iterations_per_episode = {getattr(module, 'MADS_ITERATIONS_PER_EPISODE', '')}",
+                f"mads_frame_reduction = {getattr(module, 'MADS_FRAME_REDUCTION', '')}",
+                f"initial_poll_size = {getattr(module, 'INITIAL_POLL_SIZE', '')}",
+                f"min_poll_size = {getattr(module, 'MIN_POLL_SIZE', '')}",
+                f"direction_type = {getattr(module, 'DIRECTION_TYPE', '')}",
+                f"bb_max_block_size = {getattr(module, 'BB_MAX_BLOCK_SIZE', '')}",
+            ]
+        )
     else:
         lines.extend(
             [

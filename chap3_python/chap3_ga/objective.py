@@ -19,7 +19,7 @@ import numpy as np
 
 from .config import CaseConfig
 from .encoding import decode_locations
-from .writers import case_folder, write_case_inputs
+from .writers import case_folder, write_case_inputs, write_design_case_inputs
 
 
 @dataclass
@@ -33,8 +33,10 @@ class ObjectiveEvaluator:
     print_batch_timing: bool = True
     results_timeout_seconds: float | None = 60.0
     simulation_interrupt_timeout_seconds: float | None = 60.0
-    evaluated: dict[tuple[int, ...], float] = field(default_factory=dict)
+    evaluated: dict[tuple, float] = field(default_factory=dict)
     count: int = 0
+    simulated_count: int = 0
+    cache_hits: int = 0
     cmg_batch_count: int = 0
 
     def __call__(self, population: np.ndarray) -> np.ndarray:
@@ -47,6 +49,7 @@ class ObjectiveEvaluator:
             if key in self.evaluated:
                 values[k] = self.evaluated[key]
                 self.count += 1
+                self.cache_hits += 1
                 print(f"{self.count} Simulation complete.", flush=True)
             else:
                 pending.append(k)
@@ -75,6 +78,7 @@ class ObjectiveEvaluator:
                 values[pop_idx] = value
                 self.evaluated[tuple(int(x) for x in chrom)] = value
                 self.count += 1
+                self.simulated_count += 1
                 print(f"{self.count} Simulation complete.", flush=True)
             if self.print_batch_timing:
                 elapsed = time.perf_counter() - started
@@ -282,6 +286,105 @@ class ObjectiveEvaluator:
         # Useful for fast GA smoke tests when CMG is unavailable.
         order_score = np.sum(chrom[: self.config.num_wells] * np.arange(1, self.config.num_wells + 1))
         return float((np.sum(chrom[self.config.num_wells :]) + 0.1 * order_score) / 1000.0)
+
+
+@dataclass
+class DesignPopulationEvaluator:
+    """Objective evaluator for decoded order/type/location design variables."""
+
+    base: ObjectiveEvaluator
+
+    @property
+    def config(self) -> CaseConfig:
+        return self.base.config
+
+    def __call__(self, designs: list[dict[str, np.ndarray | None]]) -> np.ndarray:
+        """Evaluate decoded design dictionaries without chromosome conversion."""
+
+        values = np.zeros(len(designs), dtype=float)
+        pending: list[int] = []
+        for k, design in enumerate(designs):
+            key = design_key(design)
+            if key in self.base.evaluated:
+                values[k] = self.base.evaluated[key]
+                self.base.count += 1
+                self.base.cache_hits += 1
+                print(f"{self.base.count} Simulation complete.", flush=True)
+            else:
+                pending.append(k)
+        for batch_start in range(0, len(pending), self.config.num_parallel):
+            batch = pending[batch_start : batch_start + self.config.num_parallel]
+            batch_number = batch_start // self.config.num_parallel + 1
+            if self.base.print_batch_timing:
+                print(f"Starting simulation batch {batch_number} with {len(batch)} case(s).", flush=True)
+            started = time.perf_counter()
+            drilling_costs = []
+            for local_id, pop_idx in enumerate(batch, start=1):
+                design = designs[pop_idx]
+                locs = locations_from_design(self.config, design)
+                write_design_case_inputs(
+                    self.config,
+                    local_id,
+                    as_int_array(design.get("order")),
+                    as_int_array(design.get("types")),
+                    as_int_array(design.get("locations")),
+                )
+                drilling_costs.append(self.base.drilling_cost(locs))
+            if not self.base.dry_run:
+                self.base.run_batch(len(batch))
+            for local_id, pop_idx in enumerate(batch, start=1):
+                design = designs[pop_idx]
+                if self.base.dry_run:
+                    value = synthetic_design_objective(self.config, design)
+                else:
+                    value = self.base.value_from_rwo(local_id, drilling_costs[local_id - 1])
+                values[pop_idx] = value
+                self.base.evaluated[design_key(design)] = value
+                self.base.count += 1
+                self.base.simulated_count += 1
+                print(f"{self.base.count} Simulation complete.", flush=True)
+            if self.base.print_batch_timing:
+                elapsed = time.perf_counter() - started
+                print(f"Batch {batch_number} complete in {elapsed:.1f} seconds.", flush=True)
+        return values
+
+
+def as_int_array(value: np.ndarray | None) -> np.ndarray | None:
+    if value is None:
+        return None
+    return np.asarray(value, dtype=int).reshape(-1)
+
+
+def locations_from_design(cfg: CaseConfig, design: dict[str, np.ndarray | None]) -> np.ndarray:
+    locs = as_int_array(design.get("locations"))
+    if locs is not None:
+        return locs
+    if cfg.locidx is not None and cfg.name == "channelmodel":
+        return np.asarray(cfg.locidx).reshape(-1)[: cfg.num_wells]
+    return np.arange(1, cfg.num_wells + 1)
+
+
+def design_key(design: dict[str, np.ndarray | None]) -> tuple[tuple[str, tuple[int, ...]], ...]:
+    parts: list[tuple[str, tuple[int, ...]]] = []
+    for name in ("order", "types", "locations"):
+        value = as_int_array(design.get(name))
+        if value is not None:
+            parts.append((name, tuple(int(v) for v in value)))
+    return tuple(parts)
+
+
+def synthetic_design_objective(cfg: CaseConfig, design: dict[str, np.ndarray | None]) -> float:
+    total = 0.0
+    order = as_int_array(design.get("order"))
+    types = as_int_array(design.get("types"))
+    locations = as_int_array(design.get("locations"))
+    if order is not None:
+        total += 0.1 * float(np.sum(order * np.arange(1, order.size + 1)))
+    if types is not None:
+        total += float(np.sum(types))
+    if locations is not None:
+        total += float(np.sum(locations)) / max(float(cfg.num_locations), 1.0)
+    return total / 1000.0
 
 
 def parse_npv(path: Path, cfg: CaseConfig, drilling_cost: float) -> float:

@@ -46,7 +46,7 @@ DE_OPTIONS = {
     "DE_MUTATION_FACTOR": 0.5,
     "DE_CROSSOVER_FACTOR": 0.7,
     # check de.py to see the various strategies
-    "DE_STRATEGY": 7,
+    "DE_STRATEGY": 6,
 }
 
 

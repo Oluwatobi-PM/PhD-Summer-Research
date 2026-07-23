@@ -38,7 +38,19 @@ def run_from_setup(setup_file: str | Path) -> None:
 
         run_de_from_setup(setup_file)
         return
-    raise ValueError(f"Unsupported OPTIMIZER={selected!r}. Expected 'ga', 'ilhs', 'pso', or 'de'.")
+    if selected == "mads":
+        from chap3_mads.run_case import run_from_setup as run_mads_from_setup
+
+        run_mads_from_setup(setup_file)
+        return
+    if selected in ("hybrid_mads", "pso_mads", "global_mads"):
+        from chap3_hybrid.run_case import run_from_setup as run_hybrid_from_setup
+
+        run_hybrid_from_setup(setup_file)
+        return
+    raise ValueError(
+        f"Unsupported OPTIMIZER={selected!r}. Expected 'ga', 'ilhs', 'pso', 'de', 'mads', or 'hybrid_mads'."
+    )
 
 
 def check_setup(setup_file: str | Path) -> None:
@@ -87,4 +99,36 @@ def check_setup(setup_file: str | Path) -> None:
         print(f"max_generations: {cfg.maxgen}")
         print(f"de_strategy: {STRATEGY_NAMES[int(getattr(module, 'DE_STRATEGY', 7))]}")
         return
-    raise ValueError(f"Unsupported OPTIMIZER={selected!r}. Expected 'ga', 'ilhs', 'pso', or 'de'.")
+    if selected == "mads":
+        from chap3_mads.case_setup import config_from_setup
+        from chap3_mads.mads import MADSVariableSpace
+        from .config import setup_report
+
+        cfg = config_from_setup(setup_file)
+        space = MADSVariableSpace(cfg)
+        print(setup_report(cfg))
+        print(f"mads_dimensions: {space.dimension}")
+        print(f"max_simulations: {cfg.maxgen}")
+        print(f"bb_input_type: {' '.join(space.input_types)}")
+        print(f"initial_x0: {space.vector_from_chromosome()}")
+        return
+    if selected in ("hybrid_mads", "pso_mads", "global_mads"):
+        from chap3_hybrid.case_setup import config_from_setup
+        from chap3_hybrid.run_case import print_hybrid_options
+        from chap3_ga.lhs_initialization import normalized_dimension
+        from chap3_mads.mads import MADSVariableSpace
+        from .config import setup_report
+
+        module = load_setup_module(setup_file)
+        cfg = config_from_setup(setup_file)
+        space = MADSVariableSpace(cfg)
+        print(setup_report(cfg))
+        print(f"global_optimizer: {getattr(module, 'GLOBAL_OPTIMIZER', 'pso')}")
+        print(f"pso_dimensions: {normalized_dimension(cfg)}")
+        print(f"mads_dimensions: {space.dimension}")
+        print(f"bb_input_type: {' '.join(space.input_types)}")
+        print_hybrid_options(module, cfg)
+        return
+    raise ValueError(
+        f"Unsupported OPTIMIZER={selected!r}. Expected 'ga', 'ilhs', 'pso', 'de', 'mads', or 'hybrid_mads'."
+    )

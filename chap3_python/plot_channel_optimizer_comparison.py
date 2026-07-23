@@ -18,6 +18,8 @@ METHODS = (
     ("PSO", "#FF7F0E"),
     ("GA", "#1CAD45"),
     ("DE", "#D62728"),
+    ("MADS", "#9467BD"),
+    ("PSO-MADS", "#8C564B"),
 )
 
 CASE_GROUPS = {
@@ -26,12 +28,16 @@ CASE_GROUPS = {
         "PSO": "channel_boundA_xt_pso",
         "GA": "channel_boundA_xt_ga",
         "DE": "channel_boundA_xt_de",
+        "MADS": "channel_boundA_xt_mads",
+        "PSO-MADS": "channel_boundA_xt_pso_mads",
     },
     "xto": {
         "ILHS": "channel_boundA_xto_ilhs",
         "PSO": "channel_boundA_xto_pso",
         "GA": "channel_boundA_xto_ga",
         "DE": "channel_boundA_xto_de",
+        "MADS": "channel_boundA_xto_mads",
+        "PSO-MADS": "channel_boundA_xto_pso_mads",
     },
 }
 
@@ -99,12 +105,18 @@ def load_best_npv_usd(tempdata: Path) -> np.ndarray:
             best_scaled = np.asarray(data["GAobjb"], dtype=float).reshape(-1)
         elif "DEobjb" in data:
             best_scaled = np.asarray(data["DEobjb"], dtype=float).reshape(-1)
+        elif "MADSobjb" in data:
+            best_scaled = np.asarray(data["MADSobjb"], dtype=float).reshape(-1)
+        elif "HYBRIDobjb" in data:
+            best_scaled = np.asarray(data["HYBRIDobjb"], dtype=float).reshape(-1)
         elif "PSOobj" in data:
             best_scaled = np.maximum.accumulate(np.nanmax(-np.asarray(data["PSOobj"], dtype=float), axis=1))
         elif "GAobj" in data:
             best_scaled = np.maximum.accumulate(np.nanmax(-np.asarray(data["GAobj"], dtype=float), axis=1))
         elif "DEobj" in data:
             best_scaled = np.maximum.accumulate(np.nanmax(-np.asarray(data["DEobj"], dtype=float), axis=1))
+        elif "MADSobj" in data:
+            best_scaled = np.maximum.accumulate(-np.asarray(data["MADSobj"], dtype=float).reshape(-1))
         else:
             available = ", ".join(data.files)
             raise KeyError(f"No supported objective history found in {tempdata}. Keys: {available}")

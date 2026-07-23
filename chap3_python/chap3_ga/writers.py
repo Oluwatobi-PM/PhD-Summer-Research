@@ -9,6 +9,34 @@ import numpy as np
 from .config import CaseConfig
 
 
+def write_design_case_inputs(
+    cfg: CaseConfig,
+    fileid: int,
+    order: np.ndarray | None,
+    types: np.ndarray | None,
+    locations: np.ndarray | None,
+) -> None:
+    """Write simulator inputs directly from decoded design variables."""
+
+    if cfg.design_var == 1:
+        if order is None or types is None or locations is None:
+            raise ValueError("design_var=1 requires order, types, and locations.")
+        write_design_locations_type_location(cfg, fileid, types, locations)
+        write_design_schedule_type_location(cfg, fileid, order, types, locations, use_order=True)
+    elif cfg.design_var == 2:
+        if types is None or locations is None:
+            raise ValueError("design_var=2 requires types and locations.")
+        write_design_locations_type_location(cfg, fileid, types, locations)
+        write_design_schedule_type_location(cfg, fileid, None, types, locations, use_order=False)
+    elif cfg.design_var == 3:
+        if order is None:
+            raise ValueError("design_var=3 requires order.")
+        write_locations_order_only(cfg, fileid)
+        write_design_schedule_order_only(cfg, fileid, order)
+    else:
+        raise ValueError(f"Unsupported design_var: {cfg.design_var}")
+
+
 def write_case_inputs(cfg: CaseConfig, fileid: int, chromosome: np.ndarray, loc_indices: np.ndarray) -> None:
     """Dispatch to the writer pair required by the active design variable."""
 
@@ -49,6 +77,80 @@ def selected_type(cfg: CaseConfig, chromosome: np.ndarray, well_idx: int) -> boo
     """Read one well's type bit from the chromosome."""
 
     return bool(chromosome[cfg.beforetype * cfg.num_wells + well_idx])
+
+
+def write_design_locations_type_location(
+    cfg: CaseConfig,
+    fileid: int,
+    types: np.ndarray,
+    loc_indices: np.ndarray,
+) -> None:
+    if cfg.name == "channelmodel":
+        write_design_channel_locations(cfg, fileid, types, loc_indices)
+    else:
+        write_design_brugge_locations(cfg, fileid, types, loc_indices)
+
+
+def write_design_brugge_locations(cfg: CaseConfig, fileid: int, types: np.ndarray, loc_indices: np.ndarray) -> None:
+    """Write Brugge locations from direct type/location arrays."""
+
+    if cfg.locidx is None:
+        raise RuntimeError("Brugge location writer needs locidx from baseinfo.mat.")
+    path = case_folder(cfg, fileid) / "waterFlooding_well_location.inc"
+    names: list[str] = []
+    with path.open("w", newline="") as fh:
+        w(fh, "GROUP 'ALL-WELLS' ATTACHTO 'FIELD'")
+        for i in range(cfg.num_wells):
+            row = cfg.locidx[int(loc_indices[i]) - 1]
+            inject = bool(types[i]) or is_forced_injector(cfg, int(loc_indices[i]))
+            name = well_name(int(row[0]), inject)
+            names.append(name)
+            w(fh, f"WELL  {name} ATTACHTO 'ALL-WELLS'")
+        for i in range(cfg.num_wells):
+            row = cfg.locidx[int(loc_indices[i]) - 1]
+            inject = bool(types[i]) or is_forced_injector(cfg, int(loc_indices[i]))
+            if inject:
+                w(fh, f"INJECTOR MOBWEIGHT {names[i]}")
+                w(fh, "INCOMP  WATER")
+                w(fh, f"OPERATE  MAX  BHP   {cfg.injref}")
+                w(fh, "GEOMETRY  K  0.0762  0.37  1.  0.")
+                w(fh, f"PERF GEO {names[i]}")
+                write_perf_layers(fh, int(row[1]), int(row[2]), 9)
+            else:
+                w(fh, f"PRODUCER {names[i]}")
+                w(fh, f"OPERATE  MIN  BHP   {cfg.pref}")
+                w(fh, "*MONITOR *WCUT   0.94   *SHUTIN")
+                w(fh, "GEOMETRY  K  0.0762  0.37  1.  0.")
+                w(fh, f"PERF GEO {names[i]}")
+                write_perf_layers(fh, int(row[1]), int(row[2]), 8)
+            w(fh, f"SHUTIN {names[i]}")
+            w(fh, "")
+
+
+def write_design_channel_locations(cfg: CaseConfig, fileid: int, types: np.ndarray, loc_indices: np.ndarray) -> None:
+    """Write channelmodel locations directly from type/location arrays."""
+
+    path = case_folder(cfg, fileid) / "waterFlooding_well_location.inc"
+    names: list[str] = []
+    with path.open("w", newline="") as fh:
+        w(fh, "GROUP 'ALL-WELLS' ATTACHTO 'FIELD'")
+        for loc, inject_value in zip(loc_indices, types):
+            name = well_name(int(loc), bool(inject_value))
+            names.append(name)
+            w(fh, f"WELL  {name} ATTACHTO 'ALL-WELLS'")
+        for loc, inject_value, name in zip(loc_indices, types, names):
+            well_data = cfg.source_dir / "modelpara" / f"W{int(loc):02d}.dat"
+            if bool(inject_value):
+                w(fh, f"INJECTOR {name}")
+                w(fh, "INCOMP  WATER")
+                w(fh, f"OPERATE  MAX  BHP   {cfg.injref}")
+            else:
+                w(fh, f"PRODUCER {name}")
+                w(fh, f"OPERATE  MIN  BHP   {cfg.pref}")
+                w(fh, "OPERATE  MAX  STO   100000.0 CONT")
+                w(fh, "MONITOR  MAX  WCUT  0.98     SHUTIN")
+            copy_channel_perf(fh, well_data, name)
+            w(fh, f"SHUTIN {name}")
 
 
 def write_locations_type_location(
@@ -233,6 +335,20 @@ def write_schedule_type_location(cfg: CaseConfig, fileid: int, chromosome: np.nd
         write_schedule_loop(cfg, fh, chromosome, names, loc_indices, use_order=False)
 
 
+def write_design_schedule_type_location(
+    cfg: CaseConfig,
+    fileid: int,
+    order: np.ndarray | None,
+    types: np.ndarray,
+    loc_indices: np.ndarray,
+    use_order: bool,
+) -> None:
+    names = names_for_design_type_location(cfg, types, loc_indices)
+    path = case_folder(cfg, fileid) / "waterFlooding_sched.inc"
+    with path.open("w", newline="") as fh:
+        write_design_schedule_loop(cfg, fh, order, types, names, loc_indices, use_order=use_order)
+
+
 def names_for_type_location(cfg: CaseConfig, chromosome: np.ndarray, loc_indices: np.ndarray) -> list[str]:
     names: list[str] = []
     for i, loc in enumerate(loc_indices):
@@ -243,6 +359,20 @@ def names_for_type_location(cfg: CaseConfig, chromosome: np.ndarray, loc_indices
             row = cfg.locidx[int(loc) - 1]
             label = int(row[0])
             inject = selected_type(cfg, chromosome, i) or is_forced_injector(cfg, int(loc))
+        names.append(well_name(label, inject))
+    return names
+
+
+def names_for_design_type_location(cfg: CaseConfig, types: np.ndarray, loc_indices: np.ndarray) -> list[str]:
+    names: list[str] = []
+    for loc, inject_value in zip(loc_indices, types):
+        if cfg.name == "channelmodel":
+            label = int(loc)
+            inject = bool(inject_value)
+        else:
+            row = cfg.locidx[int(loc) - 1]
+            label = int(row[0])
+            inject = bool(inject_value) or is_forced_injector(cfg, int(loc))
         names.append(well_name(label, inject))
     return names
 
@@ -294,6 +424,53 @@ def write_schedule_loop(
             inner = 1
         if t >= cfg.sim_time:
             break
+            w(fh, "")
+
+
+def write_design_schedule_loop(
+    cfg: CaseConfig,
+    fh,
+    order: np.ndarray | None,
+    types: np.ndarray,
+    names: list[str],
+    loc_indices: np.ndarray,
+    use_order: bool,
+) -> None:
+    """Schedule writer using decoded type/order arrays directly."""
+
+    nc = 1
+    nw = 1
+    t = 0.1
+    tpc = cfg.sim_time
+    w(fh, f"TIME  {t}")
+    while True:
+        for j in range(cfg.num_wells):
+            if (not use_order) or (order is not None and t >= (int(order[j]) - 1) * cfg.td):
+                w(fh, "*TARGET    *BHP")
+                w(fh, names[j])
+                inject = bool(types[j])
+                if cfg.name != "channelmodel":
+                    inject = inject or is_forced_injector(cfg, int(loc_indices[j]))
+                w(fh, f"{cfg.injref if inject else cfg.pref:f}")
+                w(fh, "")
+        inner = 0
+        while t < tpc * nc or (use_order and t < nw * cfg.td):
+            t = t + 0.1 if inner == 0 else float(np.floor(t + 30 * inner))
+            if use_order and t >= cfg.td * nw and nw < cfg.num_wells:
+                w(fh, f"TIME  {cfg.td * nw}")
+                nw += 1
+                break
+            if t >= tpc * nc:
+                w(fh, f"TIME  {tpc * nc}")
+                nc += 1
+                break
+            if t >= cfg.sim_time:
+                w(fh, f"TIME  {cfg.sim_time}")
+                break
+            w(fh, f"TIME  {t}")
+            inner = 1
+        if t >= cfg.sim_time:
+            break
         w(fh, "")
 
 
@@ -321,6 +498,55 @@ def write_schedule_order_only(cfg: CaseConfig, fileid: int, chromosome: np.ndarr
         while True:
             for j, (row_idx, row) in enumerate(active_rows):
                 if t >= (chromosome[j] - 1) * cfg.td:
+                    w(fh, "*TARGET    *BHP")
+                    w(fh, names[j])
+                    inject = bool(row[3] == 1) or is_forced_injector(cfg, row_idx)
+                    w(fh, f"{cfg.injref if inject else cfg.pref:f}")
+                    w(fh, "")
+            inner = 0
+            while t < tpc * nc or t < nw * cfg.td:
+                t = t + 0.1 if inner == 0 else float(np.floor(t + 30 * inner))
+                if t >= cfg.td * nw and nw < cfg.num_wells:
+                    w(fh, f"TIME  {cfg.td * nw}")
+                    nw += 1
+                    break
+                if t >= tpc * nc:
+                    w(fh, f"TIME  {tpc * nc}")
+                    nc += 1
+                    break
+                if t >= cfg.sim_time:
+                    w(fh, f"TIME  {cfg.sim_time}")
+                    break
+                w(fh, f"TIME  {t}")
+                inner = 1
+            if t >= cfg.sim_time:
+                break
+            w(fh, "")
+
+
+def write_design_schedule_order_only(cfg: CaseConfig, fileid: int, order: np.ndarray) -> None:
+    """Write design_var=3 schedule directly from order ranks."""
+
+    if cfg.locidx is None:
+        raise RuntimeError("Order-only schedule writer needs locidx from baseinfo.mat/baseinfo1.mat.")
+    if cfg.name == "channelmodel":
+        write_channel_order_only_schedule(cfg, fileid, np.asarray(order, dtype=int))
+        return
+    active_rows = [(idx, row) for idx, row in enumerate(cfg.locidx, start=1) if row.shape[0] >= 4 and row[3] >= 0]
+    names = [
+        well_name(int(row[0]), bool(row[3] == 1) or is_forced_injector(cfg, row_idx))
+        for row_idx, row in active_rows
+    ]
+    path = case_folder(cfg, fileid) / "waterFlooding_sched.inc"
+    with path.open("w", newline="") as fh:
+        nc = 1
+        nw = 1
+        t = 0.1
+        tpc = cfg.sim_time
+        w(fh, f"TIME  {t}")
+        while True:
+            for j, (row_idx, row) in enumerate(active_rows):
+                if t >= (int(order[j]) - 1) * cfg.td:
                     w(fh, "*TARGET    *BHP")
                     w(fh, names[j])
                     inject = bool(row[3] == 1) or is_forced_injector(cfg, row_idx)

@@ -46,6 +46,10 @@ def apply_setup_option_groups(module: ModuleType) -> None:
         apply_option_group(module, "PSO_OPTIONS")
     elif optimizer == "de":
         apply_option_group(module, "DE_OPTIONS")
+    elif optimizer == "mads":
+        apply_option_group(module, "MADS_OPTIONS")
+    elif optimizer in ("hybrid_mads", "pso_mads", "global_mads"):
+        apply_option_group(module, "HYBRID_OPTIONS")
     apply_option_group(module, "OPTIMIZER_OPTIONS")
 
 
