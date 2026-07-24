@@ -6,13 +6,15 @@ import os
 import time
 from pathlib import Path
 
+import numpy as np
+
 from chap3_ga.case_setup import load_setup_module
 from chap3_ga.config import setup_report
 from chap3_ga.objective import DesignPopulationEvaluator, ObjectiveEvaluator, clean_generated_work_folders, prepare_work_folders
 from chap3_ga.run_case import update_baseinfo1_locidx, write_optimizer_job_info
 
 from .case_setup import config_from_setup
-from .mads import MADSData, MADSVariableSpace, run_mads
+from .mads import MADSData, MADSVariableSpace, design_cache_key, run_mads
 
 
 def run_from_setup(setup_file: str | Path) -> None:
@@ -24,11 +26,17 @@ def run_from_setup(setup_file: str | Path) -> None:
     space = MADSVariableSpace(cfg)
 
     if bool(getattr(module, "CHECK_SETUP_ONLY", False)):
+        initial_chromosome = initial_chromosome_from_setup(module, cfg)
+        initial_x0 = (
+            space.vector_from_chromosome(initial_chromosome)
+            if initial_chromosome is not None
+            else space.vector_from_chromosome()
+        )
         print(setup_report(cfg))
         print(f"mads_dimensions: {space.dimension}")
         print(f"max_simulations: {cfg.maxgen}")
         print(f"bb_input_type: {' '.join(space.input_types)}")
-        print(f"initial_x0: {space.vector_from_chromosome()}")
+        print(f"initial_x0: {initial_x0}")
         return
 
     if bool(getattr(module, "CLEAN_WORK_FOLDERS_ON_START", True)):
@@ -63,6 +71,7 @@ def run_from_setup(setup_file: str | Path) -> None:
     max_simulations = getattr(module, "MAX_SIMULATIONS", None)
     if max_simulations is None:
         max_simulations = getattr(module, "MAX_BB_EVAL")
+    initial_chromosome = initial_chromosome_from_setup(module, cfg)
 
     mads = MADSData(
         cfg,
@@ -76,7 +85,9 @@ def run_from_setup(setup_file: str | Path) -> None:
         display_degree=int(getattr(module, "DISPLAY_DEGREE", 0)),
         bb_max_block_size=int(getattr(module, "BB_MAX_BLOCK_SIZE", cfg.num_parallel)),
         seed=int(getattr(module, "SEED", 1000)),
+        x0=space.vector_from_chromosome(initial_chromosome) if initial_chromosome is not None else None,
     )
+    seed_initial_objective(mads, module, initial_chromosome)
     run_mads(mads)
 
     dry_run = bool(getattr(module, "DRY_RUN", False))
@@ -85,3 +96,32 @@ def run_from_setup(setup_file: str | Path) -> None:
         update_baseinfo1_locidx(mads)
     elif dry_run and not allow_dry_update:
         print("Skipping baseinfo1_locidx.csv update because this was a dry run.", flush=True)
+
+
+def initial_chromosome_from_setup(module, cfg) -> np.ndarray | None:
+    """Return an optional setup-provided starting chromosome for MADS."""
+
+    value = getattr(module, "INITIAL_CHROMOSOME", None)
+    if value is None:
+        return None
+    chrom = np.asarray(value, dtype=int).reshape(-1)
+    expected = int(cfg.chromosome_length)
+    if chrom.size != expected:
+        raise ValueError(f"INITIAL_CHROMOSOME has length {chrom.size}; expected {expected}.")
+    return chrom
+
+
+def seed_initial_objective(mads: MADSData, module, initial_chromosome: np.ndarray | None) -> None:
+    """Seed the MADS cache with a known objective for the supplied start point."""
+
+    if initial_chromosome is None or not hasattr(module, "INITIAL_OBJECTIVE"):
+        return
+    if mads.x0 is None:
+        return
+    objective = float(getattr(module, "INITIAL_OBJECTIVE"))
+    vector = np.asarray(mads.x0, dtype=float)
+    design = mads.variable_space.design_from_vector(vector)
+    mads.cache[design_cache_key(design)] = objective
+    mads.fxmin = objective
+    mads.xmin = np.asarray(initial_chromosome, dtype=int).copy()
+    mads.best_vector = vector.copy()

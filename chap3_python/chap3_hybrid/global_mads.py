@@ -8,6 +8,7 @@ frame size and return to PSO after a non-improving MADS episode.
 
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass, field
 import numpy as np
 
@@ -63,6 +64,7 @@ class HybridMADSData:
     best_history: list[float] = field(default_factory=list)
     best_chrom_history: list[np.ndarray] = field(default_factory=list)
     mads_frame_history: list[float] = field(default_factory=list)
+    diagnostic_rows: list[dict[str, object]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.global_optimizer = str(self.global_optimizer).strip().lower()
@@ -102,6 +104,8 @@ def run_hybrid_mads(hybrid: HybridMADSData, save_history: bool = True) -> Hybrid
     if int(hybrid.max_simulations) < int(hybrid.pso.swarm_size):
         raise ValueError("MAX_SIMULATIONS must be at least SWARM_SIZE for the initial PSO evaluation.")
 
+    before_initial_simulated = int(hybrid.objective.simulated_count)
+    before_initial_cache_hits = int(hybrid.objective.cache_hits)
     evaluate_swarm(
         hybrid.pso,
         hybrid.pso.particles,
@@ -112,6 +116,26 @@ def run_hybrid_mads(hybrid: HybridMADSData, save_history: bool = True) -> Hybrid
         save_history=False,
     )
     sync_from_pso(hybrid)
+    record_diagnostic_row(
+        hybrid,
+        phase="pso_initial",
+        source="pso",
+        best_before=np.nan,
+        best_after=float(hybrid.best_objective),
+        simulated_before=before_initial_simulated,
+        simulated_after=int(hybrid.objective.simulated_count),
+        cache_hits_before=before_initial_cache_hits,
+        cache_hits_after=int(hybrid.objective.cache_hits),
+        callback_evaluations=np.nan,
+        unique_designs=np.nan,
+        pso_mean_npv=mean_npv_from_objectives(hybrid.pso.objv),
+        pso_median_npv=median_npv_from_objectives(hybrid.pso.objv),
+        pso_current_best_npv=current_best_npv_from_objectives(hybrid.pso.objv),
+        failed_evaluations=count_failed_objectives(hybrid.pso.objv),
+        mads_frame_before=float(hybrid.mads_frame_size),
+        mads_frame_after=float(hybrid.mads_frame_size),
+        improved=True,
+    )
     record_hybrid_state(hybrid, "pso_initial", save_history)
 
     while remaining_budget(hybrid) > 0:
@@ -209,6 +233,8 @@ def run_one_pso_iteration(hybrid: HybridMADSData, rng: np.random.Generator, save
 
     pso = require_pso(hybrid)
     previous_best = float(pso.fxmin)
+    before_simulated = int(hybrid.objective.simulated_count)
+    before_cache_hits = int(hybrid.objective.cache_hits)
     hybrid.pso_iteration += 1
     rp = rng.uniform(size=pso.particles.shape)
     rg = rng.uniform(size=pso.particles.shape)
@@ -232,6 +258,26 @@ def run_one_pso_iteration(hybrid: HybridMADSData, rng: np.random.Generator, save
     )
     sync_from_pso(hybrid)
     improved = pso.fxmin < previous_best - float(hybrid.improvement_tolerance)
+    record_diagnostic_row(
+        hybrid,
+        phase="pso_improved" if improved else "pso_no_improvement",
+        source="pso",
+        best_before=previous_best,
+        best_after=float(pso.fxmin),
+        simulated_before=before_simulated,
+        simulated_after=int(hybrid.objective.simulated_count),
+        cache_hits_before=before_cache_hits,
+        cache_hits_after=int(hybrid.objective.cache_hits),
+        callback_evaluations=np.nan,
+        unique_designs=np.nan,
+        pso_mean_npv=mean_npv_from_objectives(pso.objv),
+        pso_median_npv=median_npv_from_objectives(pso.objv),
+        pso_current_best_npv=current_best_npv_from_objectives(pso.objv),
+        failed_evaluations=count_failed_objectives(pso.objv),
+        mads_frame_before=float(hybrid.mads_frame_size),
+        mads_frame_after=float(hybrid.mads_frame_size),
+        improved=improved,
+    )
     record_hybrid_state(hybrid, "pso_improved" if improved else "pso_no_improvement", save_history)
     return improved
 
@@ -270,11 +316,16 @@ def run_mads_improvement_phase(hybrid: HybridMADSData, py_nomad, save_history: b
     while remaining_budget(hybrid) > 0 and int(mads.simulated_count) < int(mads.max_simulations):
         before = float(mads.fxmin)
         before_simulated = int(mads.simulated_count)
+        before_total_simulated = int(hybrid.objective.simulated_count)
+        before_cache_hits = int(mads.cache_hits)
+        before_eval_count = int(mads.eval_count)
+        before_history_count = len(mads.history_designs)
         allowed = min(int(hybrid.local_mads_budget), remaining_budget(hybrid))
         mads.max_simulations = min(int(mads.max_simulations), int(mads.simulated_count) + allowed)
         mads.initial_poll_size = hybrid.mads_frame_size
         mads.min_poll_size = hybrid.min_poll_size
         mads.max_iterations = int(hybrid.mads_iterations_per_episode)
+        frame_before_episode = float(hybrid.mads_frame_size)
         print(
             f"MADS episode: frame={hybrid.mads_frame_size}, "
             f"remaining_total={remaining_budget(hybrid)}, local_used={mads.simulated_count}",
@@ -291,6 +342,35 @@ def run_mads_improvement_phase(hybrid: HybridMADSData, py_nomad, save_history: b
         mads.nomad_result = dict(result) if isinstance(result, dict) else {"raw_result": result}
         improved = mads.fxmin < before - float(hybrid.improvement_tolerance)
         made_new_simulations = int(mads.simulated_count) > before_simulated
+        episode_obj = mads.history_obj[before_history_count:]
+        unique_designs = count_unique_designs(mads.history_designs[before_history_count:])
+        frame_after_episode = frame_before_episode
+        if not improved:
+            frame_after_episode = max(
+                float(hybrid.min_poll_size),
+                frame_before_episode * float(hybrid.mads_frame_reduction),
+                1.0,
+            )
+        record_diagnostic_row(
+            hybrid,
+            phase="mads_improved" if improved else "mads_failed",
+            source="mads",
+            best_before=before,
+            best_after=float(mads.fxmin),
+            simulated_before=before_total_simulated,
+            simulated_after=int(hybrid.objective.simulated_count),
+            cache_hits_before=before_cache_hits,
+            cache_hits_after=int(mads.cache_hits),
+            callback_evaluations=int(mads.eval_count) - before_eval_count,
+            unique_designs=unique_designs,
+            pso_mean_npv=np.nan,
+            pso_median_npv=np.nan,
+            pso_current_best_npv=np.nan,
+            failed_evaluations=count_failed_objectives(episode_obj),
+            mads_frame_before=frame_before_episode,
+            mads_frame_after=frame_after_episode,
+            improved=improved,
+        )
         if improved:
             phase_improved = True
             mads.x0 = mads.best_vector.tolist()
@@ -298,11 +378,7 @@ def run_mads_improvement_phase(hybrid: HybridMADSData, py_nomad, save_history: b
             if not made_new_simulations:
                 break
             continue
-        hybrid.mads_frame_size = max(
-            float(hybrid.min_poll_size),
-            float(hybrid.mads_frame_size) * float(hybrid.mads_frame_reduction),
-            1.0,
-        )
+        hybrid.mads_frame_size = frame_after_episode
         print(
             "MADS returned to PSO after a non-improving episode; "
             f"next frame={hybrid.mads_frame_size}.",
@@ -378,6 +454,95 @@ def record_hybrid_state(hybrid: HybridMADSData, phase: str, save_history: bool) 
         save_hybrid_data(hybrid)
 
 
+def record_diagnostic_row(
+    hybrid: HybridMADSData,
+    *,
+    phase: str,
+    source: str,
+    best_before: float,
+    best_after: float,
+    simulated_before: int,
+    simulated_after: int,
+    cache_hits_before: int,
+    cache_hits_after: int,
+    callback_evaluations: float | int,
+    unique_designs: float | int,
+    pso_mean_npv: float,
+    pso_median_npv: float,
+    pso_current_best_npv: float,
+    failed_evaluations: int,
+    mads_frame_before: float,
+    mads_frame_after: float,
+    improved: bool,
+) -> None:
+    """Append one PSO/MADS diagnostic row for post-run analysis."""
+
+    hybrid.diagnostic_rows.append(
+        {
+            "cycle": int(hybrid.cycle),
+            "pso_iteration": int(hybrid.pso_iteration),
+            "phase": str(phase),
+            "source": str(source),
+            "simulated_before": int(simulated_before),
+            "simulated_after": int(simulated_after),
+            "new_simulations": int(simulated_after) - int(simulated_before),
+            "cache_hits_before": int(cache_hits_before),
+            "cache_hits_after": int(cache_hits_after),
+            "new_cache_hits": int(cache_hits_after) - int(cache_hits_before),
+            "callback_evaluations": callback_evaluations,
+            "unique_decoded_designs": unique_designs,
+            "best_before_obj": float(best_before),
+            "best_after_obj": float(best_after),
+            "best_delta_obj": float(best_after) - float(best_before),
+            "best_before_npv_scaled": -float(best_before),
+            "best_after_npv_scaled": -float(best_after),
+            "best_delta_npv_scaled": -float(best_after) + float(best_before),
+            "pso_mean_npv_scaled": float(pso_mean_npv),
+            "pso_median_npv_scaled": float(pso_median_npv),
+            "pso_current_best_npv_scaled": float(pso_current_best_npv),
+            "failed_evaluations": int(failed_evaluations),
+            "mads_frame_before": float(mads_frame_before),
+            "mads_frame_after": float(mads_frame_after),
+            "improved": bool(improved),
+        }
+    )
+
+
+def mean_npv_from_objectives(objv: np.ndarray | None) -> float:
+    if objv is None:
+        return float("nan")
+    return float(np.nanmean(-np.asarray(objv, dtype=float)))
+
+
+def median_npv_from_objectives(objv: np.ndarray | None) -> float:
+    if objv is None:
+        return float("nan")
+    return float(np.nanmedian(-np.asarray(objv, dtype=float)))
+
+
+def current_best_npv_from_objectives(objv: np.ndarray | None) -> float:
+    if objv is None:
+        return float("nan")
+    return float(np.nanmax(-np.asarray(objv, dtype=float)))
+
+
+def count_failed_objectives(objv) -> int:
+    """Count known failed objective values in one PSO generation or MADS episode."""
+
+    if objv is None:
+        return 0
+    values = np.asarray(objv, dtype=float).reshape(-1)
+    return int(np.sum(np.isclose(values, 1000.0)))
+
+
+def count_unique_designs(designs: list[np.ndarray]) -> int:
+    """Count unique decoded designs recorded during one MADS episode."""
+
+    if not designs:
+        return 0
+    return len({tuple(np.asarray(design, dtype=int).reshape(-1).tolist()) for design in designs})
+
+
 def save_hybrid_data(hybrid: HybridMADSData) -> None:
     """Save hybrid PSO-MADS history to the case work directory."""
 
@@ -416,6 +581,34 @@ def save_hybrid_data(hybrid: HybridMADSData) -> None:
         data.update(best_population_payload(pbest_chrom, pso.personal_best_obj, prefix="HYBRID"))
     target = out / "tempdata.npz"
     atomic_savez(target, data, fallback_stem=f"tempdata_hybrid_cycle_{hybrid.cycle:04d}", compressed=False)
+    save_hybrid_diagnostics_csv(hybrid, out / "hybrid_diagnostics.csv")
+
+
+def save_hybrid_diagnostics_csv(hybrid: HybridMADSData, target) -> None:
+    """Write a CSV summary of PSO and MADS decisions for post-run diagnosis."""
+
+    if not hybrid.diagnostic_rows:
+        return
+    fieldnames = list(hybrid.diagnostic_rows[0].keys())
+    try:
+        write_diagnostics_csv(target, fieldnames, hybrid.diagnostic_rows)
+    except PermissionError:
+        fallback = target.with_name(f"hybrid_diagnostics_cycle_{hybrid.cycle:04d}.csv")
+        write_diagnostics_csv(fallback, fieldnames, hybrid.diagnostic_rows)
+        print(
+            f"Could not update {target.name} because it is locked; "
+            f"wrote {fallback.name} instead.",
+            flush=True,
+        )
+
+
+def write_diagnostics_csv(target, fieldnames: list[str], rows: list[dict[str, object]]) -> None:
+    """Write diagnostics rows to one CSV file."""
+
+    with target.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def remaining_budget(hybrid: HybridMADSData) -> int:

@@ -22,6 +22,7 @@ Seq_WC_PSO_/
 # Generated simulator run folders
 chap3_python/cases/**/work/[0-9]*/
 chap3_python/cases/_restart_smoke/
+chap3_python/figures/
 
 # Optimizer result archives are research outputs and should be versioned
 !chap3_python/cases/**/work/python_tempdata/

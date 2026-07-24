@@ -41,14 +41,21 @@ DESIGN_VAR = 2
 # ---------------------------------------------------------------------------
 MADS_OPTIONS = {
     "SEED": 200,
-    "MAX_SIMULATIONS": 2500,
-    "INITIAL_MESH_SIZE": 0.25,
-    "INITIAL_POLL_SIZE": 0.25,
-    "MIN_MESH_SIZE": 0.01,
-    "MIN_POLL_SIZE": 0.01,
+    "MAX_SIMULATIONS": 300,
+    "INITIAL_POLL_SIZE": 1.0,
+    "MIN_POLL_SIZE": 1.0,
     "DIRECTION_TYPE": "ORTHO 2N",
-    "BB_MAX_BLOCK_SIZE": 20,
+    "BB_MAX_BLOCK_SIZE": 32,
     "DISPLAY_DEGREE": 0,
+    "INITIAL_OBJECTIVE": -4.988844799053395,
+    "INITIAL_CHROMOSOME": [
+        0, 0, 1, 0, 0, 1, 1, 1,
+        1, 1, 1, 1, 0, 0, 0, 1,
+        0, 0, 0, 1, 1, 1, 0, 0,
+        1, 1, 0, 1, 1, 1, 0, 0,
+        1, 0, 1, 0, 0, 0, 0, 0,
+        1, 1, 1, 1, 1, 0, 0, 0,
+    ],
 }
 
 
