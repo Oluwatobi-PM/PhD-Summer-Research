@@ -1,0 +1,56 @@
+[job]
+run_id = 20260724_003024
+started_at_local = 2026-07-24 00:30:24
+python_pid = 10052
+setup_file = C:\Users\oqr7631\Documents\PhD summer research\chap3_python\cases\channel_boundA_xt_mads\setup_optimizer.py
+
+[case]
+case_name = channelmodel
+optimizer = mads
+design_var = 2 (T,x placement/type)
+num_wells = 8
+num_locations = 30
+source_dir = C:\Users\oqr7631\Documents\PhD summer research\chap3_python\cases\channel_boundA_xt_mads\source
+template_dir = C:\Users\oqr7631\Documents\PhD summer research\chap3_python\cases\channel_boundA_xt_mads\source
+work_dir = C:\Users\oqr7631\Documents\PhD summer research\chap3_python\cases\channel_boundA_xt_mads\work
+data_file = C:\Users\oqr7631\Documents\PhD summer research\chap3_python\cases\channel_boundA_xt_mads\source\baseinfo_locidx.csv
+
+[initialization]
+initialization = random
+initialization_seed = 
+initialization_size = 1
+optimizer_seed = 200
+
+[run_controls]
+num_parallel = 20
+simulation_threads = 1
+dry_run = False
+stream_simulator_output = True
+print_batch_timing = True
+results_timeout_seconds = 60
+simulation_interrupt_timeout_seconds = 60
+update_baseinfo1_after_run = True
+
+[mads]
+max_simulations = 500
+initial_mesh_size = 
+initial_poll_size = 1.0
+min_mesh_size = 
+min_poll_size = 1.0
+direction_type = ORTHO 2N
+bb_max_block_size = 32
+
+[model]
+pref = 3000.0
+injref = 4600.0
+sim_time = 4000.0
+td = 90.0
+
+[economics]
+oil_price = 50.0
+water_production_cost = 5.0
+water_injection_cost = 5.0
+discount_factor = 0.1
+cdrill_v = 8000000.0
+cdrill_h = 16000000.0
+objective_scaling = 1000000000.0

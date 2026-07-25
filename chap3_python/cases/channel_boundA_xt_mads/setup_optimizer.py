@@ -41,7 +41,7 @@ DESIGN_VAR = 2
 # ---------------------------------------------------------------------------
 MADS_OPTIONS = {
     "SEED": 200,
-    "MAX_SIMULATIONS": 300,
+    "MAX_SIMULATIONS": 500,
     "INITIAL_POLL_SIZE": 1.0,
     "MIN_POLL_SIZE": 1.0,
     "DIRECTION_TYPE": "ORTHO 2N",
